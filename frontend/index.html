@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小C助手</title>
+  <link rel="icon" type="image/png" href="./favicon.ico">
+  <link rel="stylesheet" href="./style.css">
+  <script>
+    (function routeOnRoot() {
+      const token = localStorage.getItem("xc_token");
+      const path = window.location.pathname;
+      const isRoot = path === "/" || path.endsWith("/frontend/");
+      if (isRoot) {
+        window.location.replace(token ? "./index.html" : "./login.html");
+      } else if (!token) {
+        window.location.replace("./login.html");
+      }
+    })();
+  </script>
+</head>
+<body class="chat-page">
+  <main class="app">
+    <aside id="historySidebar" class="sidebar history-sidebar">
+      <div class="history-header">
+        <span class="history-title-text">历史对话</span>
+        <button id="toggleHistoryBtn" class="btn ghost mini">收起</button>
+      </div>
+      <button id="newChatBtn" class="btn">新对话</button>
+      <div id="historyList" class="history-list"></div>
+    </aside>
+
+    <section class="chat-area">
+      <header class="chat-topbar">
+        <div class="topbar-left">
+          <img
+            class="xc-mark-img"
+            src="./assets/logo-c.png"
+            width="40"
+            height="40"
+            alt="小C"
+            decoding="async"
+          />
+          <div>
+            <div class="xc-title">小C智能体</div>
+            <div class="agent-chips" aria-label="内置智能体类型">
+              <span class="chip">天气</span>
+              <span class="chip chip--map">地图</span>
+              <span class="chip">旅行规划</span>
+            </div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <button id="themeToggleBtn" class="btn ghost theme-toggle" type="button" aria-pressed="false">
+            夜间模式
+          </button>
+          <button id="logoutBtn" class="btn danger">退出</button>
+        </div>
+      </header>
+      <section id="messages" class="messages"></section>
+      <section class="composer">
+        <input id="queryInput" placeholder="输入问题后 Enter 或点发送 — 例：从八一广场到南昌西站怎么走">
+        <div class="composer-actions">
+          <button id="sendBtn" class="btn btn-send" type="button" aria-busy="false">
+            <span class="btn-send-label">发送</span>
+            <span class="btn-send-spinner" aria-hidden="true"></span>
+          </button>
+          <button id="pauseReplyBtn" class="btn ghost composer-pause" type="button" hidden disabled title="回复开始流式输出后可暂停">
+            暂停
+          </button>
+        </div>
+        <p class="composer-hint">
+          提示：右侧连接框内显示已连接即可与对应智能体对话并体验相应功能。
+        </p>
+      </section>
+    </section>
+
+    <aside class="sidebar tool-sidebar">
+      <div class="brand">
+        <h1>小C助手</h1>
+        <p>· designed by NCU CHY·</p>
+      </div>
+
+      <section class="panel">
+        <h2>定位</h2>
+        <div class="btn-row">
+          <button id="locateBtn" class="btn ghost">获取定位</button>
+        </div>
+        <p id="locateText" class="hint">当前位置：未获取</p>
+      </section>
+
+      <section class="panel itinerary-panel">
+        <h2>可编辑行程备注</h2>
+        <textarea
+          id="itineraryNotes"
+          class="itinerary-notes"
+          rows="5"
+          maxlength="4000"
+          placeholder="例：总预算不超过 4000"
+        ></textarea>
+      </section>
+
+      <section class="panel">
+        <h2>连接</h2>
+        <div class="xc-endpoint-fields" aria-hidden="true">
+          <label>
+            API 基地址
+            <input id="apiBase" value="http://127.0.0.1:8000" autocomplete="off" />
+          </label>
+          <label>
+            WebSocket 地址
+            <input id="wsUrl" value="ws://127.0.0.1:8000/ws/chat" autocomplete="off" />
+          </label>
+        </div>
+        <label>
+          选择智能体
+          <select id="agent">
+            <option value="planner">旅行规划</option>
+            <option value="weather">天气</option>
+            <option value="map">地图</option>
+          </select>
+        </label>
+        <div class="status-row">
+          <button id="connectBtn" class="btn">连接</button>
+          <span id="status" class="status offline">连接中</span>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <script src="./vendor/marked.min.js"></script>
+  <script src="./vendor/purify.min.js"></script>
+  <script src="./theme.js"></script>
+  <script src="./common.js"></script>
+  <script src="./main.js"></script>
+</body>
+</html>

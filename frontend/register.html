@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小C助手 - 注册</title>
+  <link rel="icon" type="image/png" href="./favicon.ico">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body class="auth-bg-page">
+  <div class="auth-corner">
+    <a class="link-btn" href="./login.html">去登录</a>
+  </div>
+  <main class="auth-page">
+    <section class="auth-card">
+      <p class="auth-eyebrow">XIAOC ASSISTANT</p>
+      <h1>注册小C助手</h1>
+      <p>创建账号后将自动登录并进入聊天；会话与历史按用户隔离存储。</p>
+
+      <!-- 仍参与逻辑与默认值，仅不在界面展示（与对话页一致） -->
+      <div class="xc-endpoint-fields" aria-hidden="true">
+        <label>
+          API 基地址
+          <input id="apiBase" value="http://127.0.0.1:8000" autocomplete="off" />
+        </label>
+      </div>
+      <label>
+        用户名
+        <input id="username" placeholder="请输入用户名">
+      </label>
+      <label>
+        密码
+        <input id="password" type="password" placeholder="请输入密码（至少6位）">
+      </label>
+
+      <div class="btn-row">
+        <button id="registerBtn" class="btn">注册</button>
+      </div>
+      <p id="hint" class="hint"></p>
+    </section>
+  </main>
+  <script src="./theme.js"></script>
+  <script src="./common.js"></script>
+  <script src="./auth.js"></script>
+</body>
+</html>

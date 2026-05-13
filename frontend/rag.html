@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小C助手 · RAG 知识上传</title>
+  <link rel="icon" type="image/png" href="./favicon.ico">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body class="auth-bg-page">
+  <div class="auth-corner">
+    <a class="link-btn" href="./index.html">对话首页</a>
+    <a class="link-btn" href="#" id="logoutAdmin">退出管理</a>
+  </div>
+  <main class="auth-page rag-page">
+    <section class="auth-card rag-card">
+      <h1>知识库上传</h1>
+      <p class="rag-intro">
+        支持 <strong>txt</strong>、<strong>csv</strong>、<strong>xlsx</strong>（单文件不超过 25MB）。系统按内容自动分流：
+        <br />· <strong>套餐表</strong>请严格按照含详情、出发地、价格、优惠列格式→ 写入 <strong>Neo4j</strong> 套餐图谱并同步 <strong>Chroma travel_deals</strong>；
+        <br />· <strong>其它表格或纯文本</strong> → 切块写入 <strong>Chroma rag_kb</strong>，由规划智能体的 <code>rag_kb_retriever</code> 检索。
+      </p>
+
+      <!-- 仍参与逻辑与默认值，仅不在界面展示 -->
+      <div class="xc-endpoint-fields" aria-hidden="true">
+        <label>
+          API 基地址
+          <input id="apiBase" value="http://127.0.0.1:8000" autocomplete="off" />
+        </label>
+      </div>
+      <label class="rag-file-label">
+        选择文件
+        <input id="fileInput" type="file" accept=".txt,.csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain">
+      </label>
+      <div class="btn-row">
+        <button id="uploadBtn" class="btn" type="button">上传并处理</button>
+      </div>
+      <div id="result" class="rag-result" aria-live="polite"></div>
+    </section>
+  </main>
+  <script src="./theme.js"></script>
+  <script>
+    const apiBaseInput = document.getElementById("apiBase");
+    const fileInput = document.getElementById("fileInput");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const resultEl = document.getElementById("result");
+    const logoutAdmin = document.getElementById("logoutAdmin");
+    const XC_DEFAULT_API_BASE = "http://127.0.0.1:8000";
+
+    function getApiBase() {
+      const raw =
+        (apiBaseInput && apiBaseInput.value.trim()) ||
+        localStorage.getItem("xc_api_base") ||
+        XC_DEFAULT_API_BASE;
+      return raw.replace(/\/$/, "");
+    }
+
+    const token = localStorage.getItem("xc_admin_token");
+    if (!token) {
+      window.location.replace("./admin-login.html");
+    }
+
+    if (apiBaseInput && localStorage.getItem("xc_api_base")) {
+      apiBaseInput.value = localStorage.getItem("xc_api_base");
+    }
+
+    logoutAdmin.addEventListener("click", (e) => {
+      e.preventDefault();
+      localStorage.removeItem("xc_admin_token");
+      window.location.href = "./admin-login.html";
+    });
+
+    function formatUploadResult(data) {
+      let output = `上传日志结果\n`;
+      output += `════════════════════\n\n`;
+      output += `文件名：${data.filename || '未知'}\n`;
+      output += `上传者：${data.uploaded_by || 'admin'}\n\n`;
+
+      if (data.message) {
+        output += `摘要：${data.message}\n\n`;
+      }
+
+      output += `处理目标：\n`;
+      (data.targets || []).forEach((target) => {
+        output += `  • ${target}\n`;
+      });
+      output += `\n`;
+
+      output += `处理统计：\n`;
+      output += `  • Neo4j TravelDetail  upserts: ${data.neo4j_upserts || 0} 条\n`;
+      output += `  • Chroma travel_deals docs: ${data.chroma_travel_deals_docs || 0} 条\n`;
+      output += `  • Chroma rag_kb docs: ${data.chroma_rag_kb_docs || 0} 条\n\n`;
+
+      if (data.stats && data.stats.total_rows !== undefined) {
+        output += `数据统计：总 ${data.stats.total_rows} 行，有效处理 ${data.stats.processed || 0} 条\n`;
+        if (data.stats.skipped_price > 0 || data.stats.skipped_missing > 0) {
+          output += `  跳过价格解析: ${data.stats.skipped_price} 行\n`;
+          output += `  跳过缺失字段: ${data.stats.skipped_missing} 行\n`;
+        }
+        output += `\n`;
+      }
+
+      if (data.notes && data.notes.length > 0) {
+        output += `详细说明：\n`;
+        data.notes.forEach((note, i) => {
+          output += `  ${i + 1}. ${note}\n`;
+        });
+        output += `\n`;
+      }
+
+      const rowTotal =
+        (data.neo4j_upserts || 0) +
+        (data.chroma_travel_deals_docs || 0) +
+        (data.chroma_rag_kb_docs || 0);
+      let statusLine;
+      if (rowTotal > 0) {
+        statusLine = '[成功] 已导入数据';
+      } else if (data.notes && data.notes.some((n) => /Chroma|Ollama|向量/i.test(String(n)))) {
+        statusLine =
+          '[警告] 完成但未写入有效数据（请检查 Ollama / nomic-embed-text 与 Chroma）';
+      } else {
+        statusLine = '[提示] 完成但无有效数据导入';
+      }
+      output += `状态：${statusLine}\n`;
+      return output;
+    }
+
+    uploadBtn.addEventListener("click", async () => {
+      const base = getApiBase();
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) {
+        resultEl.innerHTML = "<p style='color: #f59e0b;'>请先选择文件。</p>";
+        return;
+      }
+      localStorage.setItem("xc_api_base", base);
+      const fd = new FormData();
+      fd.append("file", f);
+      resultEl.innerHTML = "<p style='color: #3b82f6;'>上传处理中… 请稍候</p>";
+      try {
+        const response = await fetch(`${base}/admin/rag/upload`, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token },
+          body: fd,
+        });
+        const text = await response.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { raw: text.slice(0, 2000) };
+        }
+        if (!response.ok) {
+          const msg =
+            (data && (data.detail || data.message)) ||
+            (typeof data === "string" ? data : JSON.stringify(data));
+          resultEl.innerHTML = `<p style='color: #ef4444;'>错误 ${response.status}:</p><pre style='background:#fee2e2;padding:10px;border-radius:4px;'>${typeof msg === "string" ? msg : JSON.stringify(msg, null, 2)}</pre>`;
+          if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem("xc_admin_token");
+            resultEl.innerHTML += `<p style='color:#f59e0b;margin-top:10px;'>请重新在管理员登录页获取令牌。</p>`;
+          }
+          return;
+        }
+        // 使用中文格式化显示
+        const formatted = formatUploadResult(data);
+        resultEl.textContent = formatted;
+        // 添加一点样式提示
+        resultEl.style.whiteSpace = "pre-wrap";
+        resultEl.style.fontFamily = "monospace";
+        resultEl.style.backgroundColor = "#f8fafc";
+        resultEl.style.padding = "15px";
+        resultEl.style.borderRadius = "6px";
+        resultEl.style.border = "1px solid #e2e8f0";
+      } catch (err) {
+        resultEl.innerHTML = `<p style='color: #ef4444;'>请求失败: ${err && err.message ? err.message : String(err)}</p>`;
+      }
+    });
+  </script>
+</body>
+</html>
