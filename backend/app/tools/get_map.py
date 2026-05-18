@@ -59,7 +59,7 @@ def route_plan(start: str, end: str, strategy: str = "0") -> str:
 
 
 @tool(description="搜索附近指定半径内的住宿服务用于用户参考，仅推荐前三位。")
-def nearby_hotels(location: str, radius: int = 1000) -> str:
+def nearby_hotels(location: str, radius: int = 5000) -> str:
     coord = NoTool.geocode_lonlat(location)
     if not coord:
         return NoTool.geocode_address(location)

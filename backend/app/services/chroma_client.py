@@ -1,4 +1,7 @@
-# Chroma 单例客户端 + 进程内锁，减轻多路并发打开同一 persist 目录导致的 HNSW/compactor 损坏与报错。
+"""
+Chroma 单例客户端 + 进程内锁。
+减轻多路并发打开同一 persist 目录导致的 HNSW/compactor 损坏与报错。
+"""
 
 from __future__ import annotations
 
@@ -131,7 +134,7 @@ def chroma_similarity_search(
             return _run()
         except Exception as second:
             logger.exception("Chroma search failed after repair: %s", str(second)[:500])
-            raise second from first
+            return []
 
 
 def chroma_add_documents(

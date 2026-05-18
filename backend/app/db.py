@@ -1,5 +1,5 @@
-"""SQLAlchemy 引擎与会话工厂。
-
+"""
+SQLAlchemy 引擎与会话工厂。
 供 FastAPI 依赖注入和业务模块获取 PostgreSQL 连接。
 """
 

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import csv
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
-
-import pandas as pd
 
 from backend.app.config import settings
 from backend.app.services.http_client import request_json
@@ -13,7 +13,11 @@ from backend.app.services.http_client import request_json
 AMAP_API_KEY = settings.AMAP_API_KEY
 
 
+@lru_cache(maxsize=512)
 def _geocode_first(address: str) -> Optional[dict[str, Any]]:
+    address = (address or "").strip()
+    if not address:
+        return None
     data = request_json(
         "GET",
         "https://restapi.amap.com/v3/geocode/geo",
@@ -62,37 +66,50 @@ def nearby_places(location: str, radius: int = 1000) -> str:
     return "\n".join(formatted)
 
 
-_city_codes_cache: Optional[pd.DataFrame] = None
+_city_codes_cache: Optional[tuple[tuple[str, str], ...]] = None
 CSV_PATH = str(Path(__file__).resolve().parent.parent / "data" / "city_code.csv")
 
 
-def load_city_codes(csv_path: str = CSV_PATH) -> pd.DataFrame:
+def load_city_codes(csv_path: str = CSV_PATH) -> tuple[tuple[str, str], ...]:
     global _city_codes_cache
     if _city_codes_cache is None:
         try:
-            _city_codes_cache = pd.read_csv(csv_path)
+            with open(csv_path, encoding="utf-8-sig", newline="") as f:
+                reader = csv.DictReader(f)
+                _city_codes_cache = tuple(
+                    (
+                        str(row.get("城市代码") or "").strip(),
+                        str(row.get("城市名称") or "").strip(),
+                    )
+                    for row in reader
+                    if row.get("城市代码") and row.get("城市名称")
+                )
         except FileNotFoundError:
-            sample_data = {
-                "城市代码": ["101010100", "101020100", "101280101", "101280601"],
-                "城市名称": ["北京", "上海", "广州", "深圳"],
-            }
-            pd.DataFrame(sample_data).to_csv(csv_path, index=False)
-            _city_codes_cache = pd.read_csv(csv_path)
+            _city_codes_cache = (
+                ("101010100", "北京"),
+                ("101020100", "上海"),
+                ("101280101", "广州"),
+                ("101280601", "深圳"),
+            )
 
     return _city_codes_cache
 
 
 def find_city_code(city_name: str) -> str:
-    df = load_city_codes()
-    exact = df[df["城市名称"] == city_name]
-    if not exact.empty:
-        return str(exact.iloc[0]["城市代码"])
+    return _find_city_code_cached((city_name or "").strip())
 
-    for _, row in df.iterrows():
-        csv_city = row["城市名称"]
+
+@lru_cache(maxsize=512)
+def _find_city_code_cached(city_name: str) -> str:
+    city_codes = load_city_codes()
+    for code, csv_city in city_codes:
+        if csv_city == city_name:
+            return code
+
+    for code, csv_city in city_codes:
         if csv_city.startswith(city_name) or csv_city.endswith(city_name) or city_name in csv_city:
-            return str(row["城市代码"])
+            return code
         if city_name.startswith(csv_city) or city_name.endswith(csv_city) or csv_city in city_name:
-            return str(row["城市代码"])
+            return code
 
     return city_name

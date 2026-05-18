@@ -1,5 +1,9 @@
-# LangGraph create_agent：从 model 节点取流式正文；伪流式为按批合并多段小增量再推送；
-# 同时从 model 的 tool_call_chunks / tools 节点的 ToolMessage 提取工具名，供前端「正在使用某工具」提示。
+"""
+LangGraph create_agent。
+从 model 节点取流式正文；伪流式为按批合并多段小增量再推送，
+同时从 model 的 tool_call_chunks / tools 节点的 ToolMessage 提取工具名，
+供前端「正在使用某工具」提示。
+"""
 
 from __future__ import annotations
 
@@ -25,19 +29,31 @@ def aimessage_chunk_text(content: Any) -> str:
     return str(content)
 
 
-def _tool_names_from_aimessage_chunk(tok: AIMessageChunk) -> list[str]:
-    names: list[str] = []
+def _tool_events_from_aimessage_chunk(tok: AIMessageChunk) -> list[dict[str, str]]:
+    events: list[dict[str, str]] = []
     tcc = getattr(tok, "tool_call_chunks", None) or []
     for tc in tcc:
         if isinstance(tc, dict):
             n = str(tc.get("name") or "").strip()
-            if n:
-                names.append(n)
+            call_id = str(tc.get("id") or tc.get("tool_call_id") or "").strip()
+            index = str(tc.get("index") if tc.get("index") is not None else "").strip()
         else:
             n = str(getattr(tc, "name", "") or "").strip()
-            if n:
-                names.append(n)
-    return names
+            call_id = str(
+                getattr(tc, "id", "") or getattr(tc, "tool_call_id", "") or ""
+            ).strip()
+            index = str(
+                getattr(tc, "index", "") if getattr(tc, "index", None) is not None else ""
+            ).strip()
+        if n:
+            events.append(
+                {
+                    "name": n,
+                    "phase": "selected",
+                    "call_id": call_id or (f"{n}:{index}" if index else n),
+                }
+            )
+    return events
 
 
 def iter_agent_text_and_tool_hints(
@@ -45,9 +61,14 @@ def iter_agent_text_and_tool_hints(
     messages: list[Any],
     *,
     cancel_requested: threading.Event | None = None,
-) -> Iterator[tuple[str, str | None]]:
-    """每次产出 (text_piece, tool_name)；二者至多一个非空。tool_name 表示模型刚选中的工具（或工具节点开始）。"""
-    last_tool_emitted: str | None = None
+) -> Iterator[tuple[str, dict[str, str] | None]]:
+    """每次产出 (text_piece, tool_event)；二者至多一个非空。
+
+    tool_event.phase:
+    - selected: 模型刚选择了工具，随后会进入 tools 节点
+    - completed: tools 节点返回了 ToolMessage
+    """
+    active_tool_calls: set[str] = set()
     for chunk in agent.stream(
         {"messages": messages},
         stream_mode="messages",
@@ -65,10 +86,18 @@ def iter_agent_text_and_tool_hints(
 
         if node == "tools" and isinstance(tok, ToolMessage):
             n = str(getattr(tok, "name", "") or "").strip()
-            if n and n != last_tool_emitted:
-                last_tool_emitted = n
-                yield "", n
-            last_tool_emitted = None
+            call_id = str(getattr(tok, "tool_call_id", "") or "").strip()
+            if n:
+                key = call_id or n
+                if key in active_tool_calls:
+                    active_tool_calls.discard(key)
+                else:
+                    for existing in list(active_tool_calls):
+                        if existing == n or existing.startswith(f"{n}:"):
+                            key = existing
+                            active_tool_calls.discard(existing)
+                            break
+                yield "", {"name": n, "phase": "completed", "call_id": key}
             continue
 
         if node != "model":
@@ -76,17 +105,17 @@ def iter_agent_text_and_tool_hints(
         if not isinstance(tok, AIMessageChunk):
             continue
 
-        for n in _tool_names_from_aimessage_chunk(tok):
-            if n and n != last_tool_emitted:
-                last_tool_emitted = n
-                yield "", n
+        for event in _tool_events_from_aimessage_chunk(tok):
+            key = event["call_id"] or event["name"]
+            if key and key not in active_tool_calls:
+                active_tool_calls.add(key)
+                yield "", event
 
         tcc = getattr(tok, "tool_call_chunks", None) or []
         piece = aimessage_chunk_text(getattr(tok, "content", None))
         if not piece and tcc:
             continue
         if piece:
-            last_tool_emitted = None
             yield piece, None
 
 
@@ -111,7 +140,7 @@ def iter_agent_text_batched_deltas(
     *,
     cancel_requested: threading.Event | None = None,
     min_chunk_chars: int = 36,
-) -> Iterator[tuple[str, str | None]]:
+) -> Iterator[tuple[str, dict[str, str] | None]]:
     # 伪流式：在 token 流之上合并若干小段；遇到工具提示时先刷出缓冲区再单独产出 ("", tool_name)。
     buf: list[str] = []
     pending = 0

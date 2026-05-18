@@ -12,6 +12,9 @@ env/
 !.env.example
 
 backend/chroma_db/
+tests
+demo_data
+experiments
 
 Thumbs.db
 Desktop.ini

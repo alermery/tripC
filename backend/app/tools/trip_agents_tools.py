@@ -3,7 +3,14 @@
 from __future__ import annotations
 from langchain_core.tools import tool
 
-@tool(description="按总预算与天数给出交通、住宿、餐饮、门票、机动的大致占比（economy / balanced / comfort）。")
+
+@tool(
+    description=(
+        "按总预算与天数给出交通、住宿、餐饮、门票、机动的大致占比（economy / balanced / comfort）。"
+        "total_budget_yuan 必须使用用户原文预算的完整整数金额，不得省略、截断、缩放或重新估算；"
+        "trip_days 必须使用用户原文行程天数。"
+    )
+)
 def trip_budget_skeleton(total_budget_yuan: int, trip_days: int, style: str = "balanced") -> str:
     if total_budget_yuan <= 0 or trip_days <= 0:
         return "总预算与天数须为正整数。"
@@ -22,6 +29,12 @@ def trip_budget_skeleton(total_budget_yuan: int, trip_days: int, style: str = "b
     }
     trans, stay, food, ticket, buffer_ = profiles[st]
     per_day = total_budget_yuan / trip_days
+    if per_day < 100:
+        return (
+            f"预算数值疑似异常：共 ¥{total_budget_yuan} / {trip_days} 天，日均约 ¥{per_day:.0f}，"
+            "明显低于常规旅行开销。请核对是否漏写 0 或截断了用户原始金额。"
+            "若用户原文给出明确预算，必须按原始完整数字重新调用本工具。"
+        )
 
     def line(name: str, ratio: float) -> str:
         amt = int(total_budget_yuan * ratio)

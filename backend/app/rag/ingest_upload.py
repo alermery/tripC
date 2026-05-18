@@ -13,6 +13,8 @@ from backend.app.rag.persist_chroma import write_listings_to_chroma
 from backend.app.rag.persist_neo4j import write_listings_to_neo4j
 
 _MAX = 2400
+_OVERLAP = 180
+_SEPARATORS = ("\n\n", "\n", "。", "！", "？", "；", "; ", ". ", "! ", "? ", "，", ", ", "、", " ")
 _HINT_CSV = Path(__file__).resolve().parent.parent / "data" / "dest_city_hints.csv"
 _PKG_KEYS = frozenset({"departure", "detail", "price"})
 _ALIASES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -30,15 +32,79 @@ def _fold(s: str) -> str:
     return str(s).strip().replace("\ufeff", "").replace("\u3000", " ").strip()
 
 
+def _pieces_with_separator(text: str, sep: str) -> list[str]:
+    if sep in {"。", "！", "？", "；", "，", "、"}:
+        return [p for p in re.split(f"(?<={re.escape(sep)})", text) if p.strip()]
+    if sep in {". ", "! ", "? ", "; ", ", "}:
+        mark = sep.strip()
+        return [p for p in re.split(f"(?<={re.escape(mark)})\\s+", text) if p.strip()]
+    return [p for p in text.split(sep) if p.strip()]
+
+
+def _merge_semantic_units(units: list[str], max_len: int | None = None, overlap: int | None = None) -> list[str]:
+    max_len = _MAX if max_len is None else max_len
+    overlap = _OVERLAP if overlap is None else overlap
+    chunks: list[str] = []
+    current = ""
+    tail = ""
+    for raw in units:
+        unit = raw.strip()
+        if not unit:
+            continue
+        if len(unit) > max_len:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.extend(_semantic_split(unit, max_len=max_len, overlap=overlap))
+            tail = chunks[-1][-overlap:] if chunks and overlap > 0 else ""
+            continue
+        if not current:
+            current = unit
+        elif len(current) + 1 + len(unit) <= max_len:
+            current = f"{current}\n{unit}"
+        else:
+            chunks.append(current)
+            prefix = tail if tail and len(tail) + 1 + len(unit) <= max_len else ""
+            current = f"{prefix}\n{unit}".strip() if prefix else unit
+        tail = current[-overlap:] if overlap > 0 else ""
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _semantic_split(text: str, max_len: int | None = None, overlap: int | None = None) -> list[str]:
+    max_len = _MAX if max_len is None else max_len
+    overlap = _OVERLAP if overlap is None else overlap
+    t = text.strip()
+    if not t:
+        return []
+    if len(t) <= max_len:
+        return [t]
+    for sep in _SEPARATORS:
+        if sep not in t:
+            continue
+        pieces = _pieces_with_separator(t, sep)
+        if len(pieces) <= 1:
+            continue
+        chunks = _merge_semantic_units(pieces, max_len=max_len, overlap=overlap)
+        if chunks and all(len(c) <= max_len for c in chunks):
+            return chunks
+    # Fallback only for pathological text with no usable semantic separator.
+    chunks: list[str] = []
+    step = max(1, max_len - max(0, overlap))
+    for start in range(0, len(t), step):
+        chunk = t[start : start + max_len].strip()
+        if chunk:
+            chunks.append(chunk)
+    return chunks
+
+
 def _chunk_txt(text: str) -> list[str]:
     t = text.strip()
     if not t:
         return []
-    parts = [p.strip() for p in re.split(r"\n{3,}", t) if p.strip()]
-    out: list[str] = []
-    for p in parts:
-        out.extend([p[i : i + _MAX] for i in range(0, len(p), _MAX)] if len(p) > _MAX else [p])
-    return out or [t[:_MAX]]
+    parts = [p.strip() for p in re.split(r"\n{2,}", t) if p.strip()]
+    return _merge_semantic_units(parts)
 
 
 @lru_cache
@@ -176,10 +242,8 @@ def _generic_chunks(df: pd.DataFrame, name: str) -> list[str]:
         if not line.strip():
             continue
         prefix = f"[{name}#row{idx}]\n"
-        if len(line) > _MAX:
-            chunks.extend(prefix + line[i : i + _MAX] for i in range(0, len(line), _MAX))
-        else:
-            chunks.append(prefix + line)
+        available = max(400, _MAX - len(prefix))
+        chunks.extend(prefix + chunk for chunk in _semantic_split(line, max_len=available))
     return chunks
 
 

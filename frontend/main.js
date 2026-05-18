@@ -89,6 +89,7 @@ const sendBtn = document.getElementById("sendBtn");
 const pauseReplyBtn = document.getElementById("pauseReplyBtn");
 const streamNodes = new Map();
 const conversations = new Map();
+const STREAM_MD_FLUSH_MS = 80;
 
 /** 当前一轮从发送到 stream_end 的 UI 状态（与 WebSocket 流式对应） */
 let activeStreamMessageId = null;
@@ -123,6 +124,7 @@ const TOOL_NAME_ZH = {
   travel_season_tips: "季节出行提示",
   travel_safe_tips: "安全出行提示",
   rag_kb_retriever: "知识库检索",
+  planner_prepare: "规划上下文准备",
 };
 
 function toolNameToZh(raw) {
@@ -130,22 +132,83 @@ function toolNameToZh(raw) {
   return TOOL_NAME_ZH[k] || k;
 }
 
-function applyStreamToolProgress(messageId, toolRaw) {
-  const info = streamNodes.get(messageId);
-  if (!info) return;
-  const label = escapeHtmlText(toolNameToZh(toolRaw));
-  const html = `正在使用「<strong>${label}</strong>」获取信息…`;
-  if (info.streamWaitHintEl) {
-    info.streamWaitHintEl.innerHTML = html;
+function formatElapsedMs(ms) {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const seconds = Math.max(1, Math.round(n / 1000));
+  return `${seconds}s`;
+}
+
+function renderStreamToolStatus(info) {
+  if (!info || !info.activeToolStatuses || !info.activeToolStatuses.size) {
+    if (info && info.streamToolStatusEl) {
+      info.streamToolStatusEl.remove();
+      info.streamToolStatusEl = null;
+    }
     return;
+  }
+  const parts = [];
+  for (const state of info.activeToolStatuses.values()) {
+    const label = escapeHtmlText(toolNameToZh(state.tool));
+    const elapsed = formatElapsedMs(state.elapsedMs);
+    if (state.phase === "completed") {
+      parts.push(`「<strong>${label}</strong>」已完成${elapsed ? `，耗时 ${elapsed}` : ""}`);
+    } else if (state.phase === "running") {
+      parts.push(`正在等待「<strong>${label}</strong>」返回${elapsed ? `，已等待 ${elapsed}` : ""}…`);
+    } else {
+      parts.push(`正在使用「<strong>${label}</strong>」获取信息…`);
+    }
   }
   if (!info.streamToolStatusEl) {
     info.streamToolStatusEl = document.createElement("p");
     info.streamToolStatusEl.className = "stream-wait-hint stream-tool-status";
   }
-  info.streamToolStatusEl.innerHTML = html;
+  info.streamToolStatusEl.innerHTML = parts.join("<br>");
   if (!info.bubble.contains(info.streamToolStatusEl)) {
     info.bubble.appendChild(info.streamToolStatusEl);
+  }
+}
+
+function applyStreamToolProgress(
+  messageId,
+  toolRaw,
+  phase = "selected",
+  elapsedMs = 0,
+  callId = ""
+) {
+  const info = streamNodes.get(messageId);
+  if (!info) return;
+  const key = String(callId || toolRaw || "tool").trim();
+  if (!info.activeToolStatuses) {
+    info.activeToolStatuses = new Map();
+  }
+  if (toolRaw === "planner_prepare") {
+    if (info.streamWaitHintEl) {
+      const label = escapeHtmlText(toolNameToZh(toolRaw));
+      info.streamWaitHintEl.innerHTML = `正在使用「<strong>${label}</strong>」获取信息…`;
+    }
+    return;
+  }
+  info.activeToolStatuses.set(key, {
+    tool: toolRaw,
+    phase,
+    elapsedMs,
+  });
+
+  if (info.streamWaitHintEl) {
+    info.streamWaitHintEl.remove();
+    info.streamWaitHintEl = null;
+  }
+  renderStreamToolStatus(info);
+
+  if (phase === "completed") {
+    setTimeout(() => {
+      const current = info.activeToolStatuses && info.activeToolStatuses.get(key);
+      if (current && current.phase === "completed") {
+        info.activeToolStatuses.delete(key);
+        renderStreamToolStatus(info);
+      }
+    }, 900);
   }
 }
 
@@ -697,6 +760,7 @@ function createStreamMessage(messageId, agent, conversationId) {
     mdFlushTimer: null,
     streamWaitHintEl,
     streamToolStatusEl: null,
+    activeToolStatuses: new Map(),
   });
 }
 
@@ -733,6 +797,14 @@ function applyToolTraceToMessage(messageId, tools) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+function flushStreamMarkdown(info) {
+  if (!info) return;
+  info.mdFlushTimer = null;
+  renderBotBubbleContent(info.bubble, info.rolling);
+  attachStreamOverlayHints(info.bubble, info);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
 function appendStreamChunk(messageId, chunk) {
   const info = streamNodes.get(messageId);
   if (!info) return;
@@ -741,21 +813,11 @@ function appendStreamChunk(messageId, chunk) {
     info.streamWaitHintEl.remove();
     info.streamWaitHintEl = null;
   }
-  if (piece && info.streamToolStatusEl) {
-    info.streamToolStatusEl.remove();
-    info.streamToolStatusEl = null;
-  }
   info.rolling = (info.rolling || "") + piece;
   if (markdownAvailable()) {
-    if (info.mdFlushTimer) {
-      clearTimeout(info.mdFlushTimer);
+    if (!info.mdFlushTimer) {
+      info.mdFlushTimer = setTimeout(() => flushStreamMarkdown(info), STREAM_MD_FLUSH_MS);
     }
-    info.mdFlushTimer = setTimeout(() => {
-      info.mdFlushTimer = null;
-      renderBotBubbleContent(info.bubble, info.rolling);
-      attachStreamOverlayHints(info.bubble, info);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }, 48);
   } else {
     info.bubble.textContent = info.rolling;
     attachStreamOverlayHints(info.bubble, info);
@@ -860,7 +922,13 @@ function connect(auto = false) {
       } else if (data.type === "tool_trace") {
         applyToolTraceToMessage(data.message_id, data.tools || []);
       } else if (data.type === "tool_progress") {
-        applyStreamToolProgress(data.message_id, data.tool || "");
+        applyStreamToolProgress(
+          data.message_id,
+          data.tool || "",
+          data.phase || "selected",
+          data.elapsed_ms || 0,
+          data.call_id || ""
+        );
       } else if (data.type === "stream_chunk") {
         appendStreamChunk(data.message_id, data.chunk || "");
       } else if (data.type === "stream_end") {

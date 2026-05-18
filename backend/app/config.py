@@ -1,4 +1,4 @@
-"""Application settings."""
+"""应用配置。"""
 
 from pathlib import Path
 

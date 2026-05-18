@@ -1,9 +1,10 @@
-"""聊天历史接口。
-
+"""
+聊天历史接口。
 返回当前登录用户最近的会话消息，供前端按 conversation_id 恢复历史会话。
 """
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.api.deps import get_current_user
@@ -22,21 +23,32 @@ def get_my_history(
 ) -> list[ChatHistoryItem]:
     # 限制最近 100 条，避免历史接口一次返回过大的回复正文。
     rows = (
-        db.query(ChatMessage)
-        .filter(ChatMessage.user_id == current_user.id)
-        .order_by(ChatMessage.created_at.desc())
-        .limit(100)
+        db.execute(
+            select(
+                ChatMessage.id,
+                ChatMessage.agent,
+                ChatMessage.conversation_id,
+                ChatMessage.conversation_started_at,
+                ChatMessage.query,
+                ChatMessage.reply,
+                ChatMessage.created_at,
+            )
+            .where(ChatMessage.user_id == current_user.id)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(100)
+        )
+        .mappings()
         .all()
     )
     return [
         ChatHistoryItem(
-            id=item.id,
-            agent=item.agent,
-            conversation_id=item.conversation_id,
-            conversation_started_at=item.conversation_started_at,
-            query=item.query,
-            reply=item.reply,
-            created_at=item.created_at,
+            id=item["id"],
+            agent=item["agent"],
+            conversation_id=item["conversation_id"],
+            conversation_started_at=item["conversation_started_at"],
+            query=item["query"],
+            reply=item["reply"],
+            created_at=item["created_at"],
         )
         for item in rows
     ]

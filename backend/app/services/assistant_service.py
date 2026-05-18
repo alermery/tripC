@@ -1,4 +1,7 @@
-# 对话编排服务：按用户显式选择的智能体类型调用天气 / 地图 / 行程智能体。
+"""
+对话编排服务。
+按用户显式选择的智能体类型调用天气 / 地图 / 行程智能体。
+"""
 
 import logging
 import threading
@@ -27,6 +30,7 @@ class AssistantService:
         *,
         username: str | None = None,
         conversation_id: str | None = None,
+        user_id: int | None = None,
     ) -> tuple[AgentType, str, list[dict[str, str]]]:
         if agent == "weather":
             text, tools = self._weather.weather_assistant(query)
@@ -37,7 +41,11 @@ class AssistantService:
         # planner
         hist: list = []
         if username and conversation_id:
-            hist = build_planner_history_messages(username, conversation_id)
+            hist = build_planner_history_messages(
+                username,
+                conversation_id,
+                user_id=user_id,
+            )
         logger.info(
             "AssistantService.chat planner user=%s conversation_id=%s history_lc_messages=%d query_len=%d",
             username or "",
@@ -55,6 +63,7 @@ class AssistantService:
         *,
         username: str | None = None,
         conversation_id: str | None = None,
+        user_id: int | None = None,
         cancel_requested: threading.Event | None = None,
     ):
         # 与 chat 相同路由；流式为 LangGraph messages + 通义流式，正文按批（多 token）累积推送。
@@ -68,7 +77,11 @@ class AssistantService:
             return
         hist: list = []
         if username and conversation_id:
-            hist = build_planner_history_messages(username, conversation_id)
+            hist = build_planner_history_messages(
+                username,
+                conversation_id,
+                user_id=user_id,
+            )
         logger.info(
             "AssistantService.chat_stream planner user=%s conversation_id=%s history_lc_messages=%d query_len=%d",
             username or "",

@@ -8,6 +8,8 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from backend.app.agents.prompt_templates import PLANNER_PROMPT
 from backend.app.agents.tongyi_llm import get_chat_tongyi
 from backend.app.services.agent_stream_tokens import iter_agent_text_batched_deltas
+from backend.app.services.planner_query_builder import ensure_preference_block
+from backend.app.services.preference_extractor import extract_preferences
 from backend.app.tools.get_map import (
     geocode_address,
     get_user_location,
@@ -26,6 +28,24 @@ from backend.app.tools.get_travel_details import (
 from backend.app.tools.get_weather import qweather_forecast
 from backend.app.tools.rag_kb import rag_kb_retriever
 from backend.app.tools.trip_agents_tools import trip_budget_skeleton
+
+
+def _build_locked_fact_prefix(user_query: str) -> str:
+    pref = extract_preferences(user_query)
+    lines: list[str] = []
+    budget = pref.get("budget_amount_yuan")
+    scope = pref.get("budget_scope")
+    days = pref.get("duration_days")
+    if isinstance(budget, int):
+        if scope == "per_person":
+            lines.append(f"- **人均预算**：¥{budget}（按用户原文锁定，未提供人数时不折算总预算）")
+        else:
+            lines.append(f"- **总预算**：¥{budget}（按用户原文锁定）")
+    if isinstance(days, int):
+        lines.append(f"- **行程天数**：{days} 天（按用户原文锁定）")
+    if not lines:
+        return ""
+    return "## 已锁定用户约束\n" + "\n".join(lines) + "\n\n"
 
 
 class PlannerAgent:
@@ -62,8 +82,12 @@ class PlannerAgent:
         cancel_requested: threading.Event | None = None,
     ):
         try:
-            messages = [*(history_messages or []), HumanMessage(content=user_query)]
-            cumulative = ""
+            guarded_query = ensure_preference_block(user_query)
+            messages = [*(history_messages or []), HumanMessage(content=guarded_query)]
+            fact_prefix = _build_locked_fact_prefix(user_query)
+            cumulative = fact_prefix
+            if fact_prefix:
+                yield cumulative, [], None
             for piece, tool_hint in iter_agent_text_batched_deltas(
                 self.agent,
                 messages,

@@ -12,24 +12,39 @@ from backend.app.services.user_travel_context import build_recent_travel_context
 
 logger = logging.getLogger(__name__)
 
+PREFERENCE_BLOCK_MARKER = "【从本轮用户表述中提取的结构化偏好"
+
+
+def ensure_preference_block(core_query: str, preference_source: str | None = None) -> str:
+    """Ensure direct PlannerAgent calls still receive structured preference guards."""
+    if PREFERENCE_BLOCK_MARKER in (core_query or ""):
+        return core_query
+    pref_src = preference_source if preference_source is not None else core_query
+    pref_block = format_preferences_for_prompt(extract_preferences(pref_src))
+    if not pref_block:
+        return core_query
+    return pref_block + "\n\n【用户原问题】\n" + core_query
+
 
 def build_enriched_planner_query(
     username: str,
     core_query: str,
     itinerary_notes: str = "",
     *,
+    user_id: int | None = None,
     preference_source: str | None = None,
     conversation_id: str | None = None,
     skip_cross_conversation_memory: bool = False,
 ) -> str:
     parts: list[str] = []
     pref_src = preference_source if preference_source is not None else core_query
-    pref_block = format_preferences_for_prompt(extract_preferences(pref_src))
-    if pref_block:
+    preference_guarded_query = ensure_preference_block(core_query, pref_src)
+    if PREFERENCE_BLOCK_MARKER in preference_guarded_query:
+        pref_block, _, _ = preference_guarded_query.partition("\n\n【用户原问题】\n")
         parts.append(pref_block)
 
     if not skip_cross_conversation_memory:
-        hist_block = build_recent_travel_context(username)
+        hist_block = build_recent_travel_context(username, user_id=user_id)
         if hist_block:
             parts.append(hist_block)
 

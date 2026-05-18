@@ -1,5 +1,5 @@
-"""FastAPI 鉴权依赖。
-
+"""
+FastAPI 鉴权依赖。
 从 Bearer Token 解析当前用户或管理员，供历史、RAG 管理等受保护路由复用。
 """
 

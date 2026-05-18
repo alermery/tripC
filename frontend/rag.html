@@ -30,7 +30,7 @@
       </div>
       <label class="rag-file-label">
         选择文件
-        <input id="fileInput" type="file" accept=".txt,.csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain">
+        <input id="fileInput" type="file" multiple accept=".txt,.csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain">
       </label>
       <div class="btn-row">
         <button id="uploadBtn" class="btn" type="button">上传并处理</button>
@@ -125,53 +125,114 @@
       return output;
     }
 
+    function styleResultBox() {
+      resultEl.style.whiteSpace = "pre-wrap";
+      resultEl.style.fontFamily = "monospace";
+      resultEl.style.backgroundColor = "#f8fafc";
+      resultEl.style.padding = "15px";
+      resultEl.style.borderRadius = "6px";
+      resultEl.style.border = "1px solid #e2e8f0";
+    }
+
+    function showStatus(text, color = "#3b82f6") {
+      styleResultBox();
+      resultEl.style.color = color;
+      resultEl.textContent = text;
+    }
+
+    async function readResponseJson(response) {
+      const text = await response.text();
+      if (!text.trim()) return {};
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { _notJson: true, _raw: text.slice(0, 2000) };
+      }
+    }
+
+    function formatApiError(data) {
+      if (!data) return "请求失败";
+      if (data._notJson) return data._raw || "服务端返回了非 JSON 内容";
+      if (typeof data.detail === "string") return data.detail;
+      if (Array.isArray(data.detail)) {
+        return data.detail
+          .map((item) => (item && item.msg ? item.msg : JSON.stringify(item)))
+          .join("；");
+      }
+      return data.message || data.error || JSON.stringify(data);
+    }
+
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function pollUploadTask(base, taskId) {
+      for (let attempt = 1; attempt <= 180; attempt += 1) {
+        await sleep(1000);
+        const response = await fetch(`${base}/admin/rag/tasks/${encodeURIComponent(taskId)}`, {
+          headers: { Authorization: "Bearer " + token },
+        });
+        const data = await readResponseJson(response);
+        if (!response.ok) {
+          throw new Error(`任务查询失败 ${response.status}: ${formatApiError(data)}`);
+        }
+        if (data.status === "completed") {
+          return data.result || {};
+        }
+        if (data.status === "failed") {
+          throw new Error(data.error || "后台处理失败");
+        }
+        showStatus(`文件已上传，后台处理中...\n任务 ID：${taskId}\n已等待：${attempt} 秒`);
+      }
+      throw new Error("后台处理仍未完成，请稍后刷新页面或查看后端日志。");
+    }
+
+    async function uploadSingleFile(base, file, index, total) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const response = await fetch(`${base}/admin/rag/upload`, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: fd,
+      });
+      const data = await readResponseJson(response);
+      if (!response.ok) {
+        const msg = formatApiError(data);
+        throw new Error(`${file.name}: ${response.status} ${msg}`);
+      }
+      const finalResult = data.task_id ? await pollUploadTask(base, data.task_id) : data;
+      return `【${index + 1}/${total}】${file.name}\n${formatUploadResult(finalResult)}`;
+    }
+
     uploadBtn.addEventListener("click", async () => {
       const base = getApiBase();
-      const f = fileInput.files && fileInput.files[0];
-      if (!f) {
+      const files = Array.from(fileInput.files || []);
+      if (!files.length) {
         resultEl.innerHTML = "<p style='color: #f59e0b;'>请先选择文件。</p>";
         return;
       }
       localStorage.setItem("xc_api_base", base);
-      const fd = new FormData();
-      fd.append("file", f);
-      resultEl.innerHTML = "<p style='color: #3b82f6;'>上传处理中… 请稍候</p>";
+      uploadBtn.disabled = true;
+      showStatus(`上传处理中... 共 ${files.length} 个文件`);
       try {
-        const response = await fetch(`${base}/admin/rag/upload`, {
-          method: "POST",
-          headers: { Authorization: "Bearer " + token },
-          body: fd,
-        });
-        const text = await response.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = { raw: text.slice(0, 2000) };
+        const outputs = [];
+        for (let i = 0; i < files.length; i += 1) {
+          showStatus(`上传处理中... ${i + 1}/${files.length}\n${files[i].name}`);
+          outputs.push(await uploadSingleFile(base, files[i], i, files.length));
         }
-        if (!response.ok) {
-          const msg =
-            (data && (data.detail || data.message)) ||
-            (typeof data === "string" ? data : JSON.stringify(data));
-          resultEl.innerHTML = `<p style='color: #ef4444;'>错误 ${response.status}:</p><pre style='background:#fee2e2;padding:10px;border-radius:4px;'>${typeof msg === "string" ? msg : JSON.stringify(msg, null, 2)}</pre>`;
-          if (response.status === 401 || response.status === 403) {
-            localStorage.removeItem("xc_admin_token");
-            resultEl.innerHTML += `<p style='color:#f59e0b;margin-top:10px;'>请重新在管理员登录页获取令牌。</p>`;
-          }
-          return;
-        }
-        // 使用中文格式化显示
-        const formatted = formatUploadResult(data);
-        resultEl.textContent = formatted;
-        // 添加一点样式提示
-        resultEl.style.whiteSpace = "pre-wrap";
-        resultEl.style.fontFamily = "monospace";
-        resultEl.style.backgroundColor = "#f8fafc";
-        resultEl.style.padding = "15px";
-        resultEl.style.borderRadius = "6px";
-        resultEl.style.border = "1px solid #e2e8f0";
+        resultEl.textContent = outputs.join("\n\n----------------------------------------\n\n");
+        resultEl.style.color = "";
+        styleResultBox();
       } catch (err) {
-        resultEl.innerHTML = `<p style='color: #ef4444;'>请求失败: ${err && err.message ? err.message : String(err)}</p>`;
+        const message = err && err.message ? String(err.message) : String(err);
+        let hint = "";
+        if (/\b401\b|\b403\b/.test(message)) {
+          localStorage.removeItem("xc_admin_token");
+          hint = "\n\n请重新在管理员登录页获取令牌。";
+        }
+        showStatus(`请求失败: ${message}${hint}`, "#ef4444");
+      } finally {
+        uploadBtn.disabled = false;
       }
     });
   </script>

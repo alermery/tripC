@@ -8,7 +8,7 @@
 
 - 天气智能体：调用和风天气 API，生成逐日天气、出行风险和季节安全提示。
 - 地图智能体：调用高德地图 API，支持地理编码、浏览器定位、驾车路径规划和周边酒店/餐饮搜索。
-- 旅行规划智能体：基于 LangChain Agent 和 ReAct 思路，注册 15 个工具，整合天气、地图、套餐、预算、风俗、向量检索和 RAG 知识库信息。
+- 旅行规划智能体：基于 LangChain Agent 和 ReAct 思路，整合天气、地图、套餐、预算、风俗、向量检索和 RAG 知识库信息。
 - RAG 知识库：支持管理员上传 `.txt`、`.csv`、`.xlsx` 文件；套餐表写入 Neo4j 与 Chroma，通用文本写入 `rag_kb` 向量库。
 - 用户与会话：支持注册、登录、管理员登录、JWT 鉴权、历史会话保存和同会话上下文恢复。
 - 前端交互：支持 Markdown 渲染、DOMPurify 安全过滤、流式输出、工具调用进度提示、停止生成、定位、可编辑行程备注和夜间模式。
@@ -20,15 +20,14 @@
 ├── backend/
 │   ├── .env                         # 本地环境变量，不提交到仓库
 │   ├── requirements.txt             # Python 依赖
-│   ├── chroma_db/                   # Chroma 持久化目录，运行后生成
 │   └── app/
 │       ├── main.py                  # FastAPI 应用入口、路由挂载、启动初始化
-│       ├── config.py                # 环境变量与配置读取
+│       ├── config.py                # 环境变量与运行配置
 │       ├── db.py                    # SQLAlchemy 引擎与会话工厂
 │       ├── security.py              # 密码哈希与 JWT 编解码
 │       ├── api/                     # REST API 与 WebSocket 路由
 │       ├── agents/                  # 天气、地图、旅行规划智能体
-│       ├── services/                # 业务服务、上下文增强、偏好提取、向量库封装
+│       ├── services/                # 业务服务、HTTP 封装、上下文增强、向量库封装
 │       ├── tools/                   # LangChain 工具函数
 │       ├── rag/                     # RAG 文件摄入与持久化
 │       ├── models/                  # SQLAlchemy ORM 模型
@@ -48,6 +47,7 @@
 │   ├── style.css                    # 页面样式
 │   ├── vendor/                      # marked.js 与 DOMPurify
 │   └── assets/                      # Logo 等静态资源
+├── tests/                           # 基础测试
 ├── .gitignore
 └── README.md
 ```
@@ -79,17 +79,23 @@ QWEATHER_HOST=your_qweather_host
 QWEATHER_API_KEY=your_qweather_key
 AMAP_API_KEY=your_amap_key
 APP_ENV=development
+CORS_ORIGINS=http://127.0.0.1:5500,http://localhost:5500
+REQUEST_TIMEOUT_SECONDS=10
+REQUEST_RETRY_COUNT=3
+REQUEST_RETRY_BACKOFF=0.25
 ```
 
 说明：
 
+- `JWT_SECRET_KEY` 现在必须显式配置，未配置时服务会直接拒绝启动。
 - `ADMIN_PASSWORD` 不为空时，后端启动会创建或同步管理员账号。
 - 开发环境下后端会自动创建缺失的数据表，并执行轻量迁移。
 - RAG 上传接口只允许管理员 JWT 访问。
+- `CORS_ORIGINS` 用逗号分隔多个前端来源地址。
 
 ## 启动方式
 
-在项目根目录安装依赖：
+安装依赖：
 
 ```bash
 pip install -r backend/requirements.txt
@@ -114,24 +120,20 @@ python -m http.server 5500
 - API 文档：`http://127.0.0.1:8000/docs`
 - WebSocket：`ws://127.0.0.1:8000/ws/chat`
 
-## RAG 知识库上传
+## RAG 上传与查询
 
 1. 使用管理员账号登录 `frontend/admin-login.html`。
 2. 进入 `frontend/rag.html` 上传文件。
 3. 支持格式为 `.txt`、`.csv`、`.xlsx`，单文件最大 25MB。
-4. 包含 `departure`、`detail`、`price` 等字段的表格会被识别为旅行套餐表，写入 Neo4j 和 Chroma `travel_deals` 集合。
-5. 普通文本或无法识别为套餐表的表格会写入 Chroma `rag_kb` 集合。
-
-## 注释规范
-
-- Python 文件顶部使用模块 docstring 说明职责。
-- 函数内部只保留解释“为什么这样做”的注释，避免重复描述代码本身。
-- 前端 JavaScript 使用 JSDoc 风格注释说明状态、数据结构和复杂交互流程。
-- 注释统一使用中文，专有名词保留英文原名，如 WebSocket、JWT、RAG、Agent。
+4. 上传接口会立即返回 `task_id`，随后可通过任务接口查询处理状态。
+5. 包含 `departure`、`detail`、`price` 等字段的表格会被识别为旅行套餐表，写入 Neo4j 和 Chroma `travel_deals` 集合。
+6. 普通文本或无法识别为套餐表的表格会写入 Chroma `rag_kb` 集合。
+7. 当多个上传文件同时命中时，`rag_kb` 和 `travel_deals` 都会优先采用最近上传文件中的结果。
 
 ## 常见问题
 
 - 如果 WebSocket 连接后立即断开，优先检查登录 token 是否过期，以及后端 `/ws/chat` 是否正常启动。
-- 如果 RAG 检索为空，检查 Ollama 是否运行、`nomic-embed-text` 是否可用，以及 Chroma 目录是否有写入权限。
+- 如果 RAG 检索为空，检查 Ollama 是否运行、`nomic-embed-text` 是否可用，以及 Chroma 目录是否可写。
 - 如果地图或天气工具失败，检查 `AMAP_API_KEY`、`QWEATHER_HOST` 和 `QWEATHER_API_KEY`。
 - 如果管理员上传返回 403，确认使用的是 `/auth/admin/login` 签发的管理员 token。
+- 如果 Chroma 查询结果仍然偏旧，可以重新上传旧文件，使其补齐新的 `uploaded_at` 元数据。
