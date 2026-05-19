@@ -2,7 +2,7 @@
 
 小C助手是一个面向旅行规划场景的智能对话系统。项目采用 FastAPI 后端和原生 HTML/CSS/JavaScript 前端，提供天气查询、地图导航、旅行规划、多轮会话、行程备注、RAG 知识库上传与 WebSocket 流式回复等功能。
 
-当前代码中的核心语言模型为 `qwen3-vl-235b-a22b-thinking`，文本嵌入模型为 Ollama 本地部署的 `nomic-embed-text`。
+代码中的核心语言模型采用阿里千问系列模型，文本嵌入模型为 Ollama 本地部署的 `nomic-embed-text`。
 
 ## 核心功能
 
