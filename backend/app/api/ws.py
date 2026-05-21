@@ -43,12 +43,14 @@ _TOOL_PROGRESS_HEARTBEAT_SECONDS = 1.0
 
 
 def _initial_progress_tool(agent: AgentType) -> str | None:
+    """返回首包阶段需要展示的虚拟工具进度。"""
     if agent == "planner":
         return _PLANNER_INITIAL_PROGRESS_TOOL
     return None
 
 
 def _normalize_tool_event(raw: object) -> dict[str, str]:
+    """把不同来源的工具事件统一为 name、phase、call_id 三段结构。"""
     if isinstance(raw, dict):
         name = str(raw.get("name") or raw.get("tool") or "").strip()
         phase = str(raw.get("phase") or "selected").strip()
@@ -135,6 +137,8 @@ def _apply_remaining_queue(q: queue.Queue, acc_full: str) -> str:
         kind = item.get("kind")
         if kind == "delta":
             acc_full += str(item.get("delta") or "")
+        elif kind == "replace":
+            acc_full = str(item.get("full") or acc_full)
         elif kind == "done":
             acc_full = str(item.get("full") or acc_full)
         elif kind == "error":
@@ -170,7 +174,11 @@ def _chat_stream_producer(
                 tool_event = _normalize_tool_event(tool_hint)
                 if tool_event["name"]:
                     q.put({"kind": "tool_hint", **tool_event})
-            delta = full_text[len(prev_full) :]
+            if not str(full_text).startswith(prev_full):
+                prev_full = str(full_text)
+                q.put({"kind": "replace", "full": prev_full})
+                continue
+            delta = str(full_text)[len(prev_full) :]
             prev_full = full_text
             if delta:
                 q.put({"kind": "delta", "delta": delta})
@@ -188,6 +196,7 @@ async def _send_short_reply(
     conversation_id: str,
     reply: str,
 ) -> None:
+    """发送不需要进入完整 Agent 流程的快捷回复。"""
     await websocket.send_json(
         {
             "type": "stream_start",
@@ -233,6 +242,7 @@ async def _pump_agent_stream_to_websocket(
         elapsed_ms: int = 0,
         call_id: str = "",
     ) -> None:
+        """向前端发送单次工具进度事件。"""
         await websocket.send_json(
             {
                 "type": "tool_progress",
@@ -245,6 +255,7 @@ async def _pump_agent_stream_to_websocket(
         )
 
     async def maybe_send_tool_heartbeat() -> None:
+        """对长时间运行的工具定期补发 running 心跳。"""
         nonlocal last_tool_progress_at
         if not active_tools:
             return
@@ -261,6 +272,7 @@ async def _pump_agent_stream_to_websocket(
             )
 
     async def drain_cancel(timeout: float) -> bool:
+        """在等待输出时顺手读取取消消息，并缓存其他输入。"""
         try:
             msg = await asyncio.wait_for(websocket.receive_json(), timeout=timeout)
         except asyncio.TimeoutError:
@@ -310,6 +322,18 @@ async def _pump_agent_stream_to_websocket(
                             "chunk": delta,
                         }
                     )
+                if await drain_cancel(_CANCEL_POLL_QUICK):
+                    user_cancelled = True
+                    break
+            elif kind == "replace":
+                acc_full = str(item.get("full") or acc_full)
+                await websocket.send_json(
+                    {
+                        "type": "stream_replace",
+                        "message_id": message_id,
+                        "content": acc_full,
+                    }
+                )
                 if await drain_cancel(_CANCEL_POLL_QUICK):
                     user_cancelled = True
                     break
@@ -381,6 +405,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
         incoming_queue: list = []
 
         async def next_payload() -> dict:
+            """优先消费泵流阶段暂存的消息，否则读取 WebSocket。"""
             if incoming_queue:
                 return incoming_queue.pop(0)
             return await websocket.receive_json()

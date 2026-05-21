@@ -29,10 +29,12 @@ _ALIASES: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 
 def _fold(s: str) -> str:
+    """规整表头或单元格文本中的空白和 BOM。"""
     return str(s).strip().replace("\ufeff", "").replace("\u3000", " ").strip()
 
 
 def _pieces_with_separator(text: str, sep: str) -> list[str]:
+    """按指定分隔符拆分文本，并保留中文句末标点。"""
     if sep in {"。", "！", "？", "；", "，", "、"}:
         return [p for p in re.split(f"(?<={re.escape(sep)})", text) if p.strip()]
     if sep in {". ", "! ", "? ", "; ", ", "}:
@@ -42,6 +44,7 @@ def _pieces_with_separator(text: str, sep: str) -> list[str]:
 
 
 def _merge_semantic_units(units: list[str], max_len: int | None = None, overlap: int | None = None) -> list[str]:
+    """把语义片段合并成长度受控、带重叠的文本块。"""
     max_len = _MAX if max_len is None else max_len
     overlap = _OVERLAP if overlap is None else overlap
     chunks: list[str] = []
@@ -73,6 +76,7 @@ def _merge_semantic_units(units: list[str], max_len: int | None = None, overlap:
 
 
 def _semantic_split(text: str, max_len: int | None = None, overlap: int | None = None) -> list[str]:
+    """按优先级尝试语义切分，必要时退化为固定长度切片。"""
     max_len = _MAX if max_len is None else max_len
     overlap = _OVERLAP if overlap is None else overlap
     t = text.strip()
@@ -89,7 +93,7 @@ def _semantic_split(text: str, max_len: int | None = None, overlap: int | None =
         chunks = _merge_semantic_units(pieces, max_len=max_len, overlap=overlap)
         if chunks and all(len(c) <= max_len for c in chunks):
             return chunks
-    # Fallback only for pathological text with no usable semantic separator.
+    # 无可用语义分隔符时，退化为固定长度切片。
     chunks: list[str] = []
     step = max(1, max_len - max(0, overlap))
     for start in range(0, len(t), step):
@@ -100,6 +104,7 @@ def _semantic_split(text: str, max_len: int | None = None, overlap: int | None =
 
 
 def _chunk_txt(text: str) -> list[str]:
+    """把纯文本文件切分为可入库的知识片段。"""
     t = text.strip()
     if not t:
         return []
@@ -109,6 +114,7 @@ def _chunk_txt(text: str) -> list[str]:
 
 @lru_cache
 def _hints_longest() -> tuple[str, ...]:
+    """读取目的地提示词，并按长度倒序缓存。"""
     if not _HINT_CSV.is_file():
         raise FileNotFoundError(f"missing {_HINT_CSV}")
     df = pd.read_csv(_HINT_CSV, encoding="utf-8-sig")
@@ -124,6 +130,7 @@ def _hints_longest() -> tuple[str, ...]:
 
 
 def _infer_city(detail: str) -> str | None:
+    """根据行程详情推断目的地城市。"""
     d = (detail or "").strip()
     if len(d) < 2:
         return None
@@ -135,6 +142,7 @@ def _infer_city(detail: str) -> str | None:
 
 
 def _strip_junk(df: pd.DataFrame) -> pd.DataFrame:
+    """删除表格最左侧的空列或 Unnamed 列。"""
     out = df.copy()
     while len(out.columns):
         raw, name = out.columns[0], _fold(str(out.columns[0]))
@@ -146,6 +154,7 @@ def _strip_junk(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _hdr_tokens(col: str) -> set[str]:
+    """把表头拆成可匹配的候选词。"""
     h = _fold(col).lower()
     if not h:
         return set()
@@ -153,6 +162,7 @@ def _hdr_tokens(col: str) -> set[str]:
 
 
 def _canon_map(cols: list[str]) -> dict[str, str]:
+    """把上传表格列名映射到标准套餐字段。"""
     lm = {_fold(c).lower(): c for c in cols}
     m: dict[str, str] = {}
     for canon, alist in _ALIASES:
@@ -169,10 +179,12 @@ def _canon_map(cols: list[str]) -> dict[str, str]:
 
 
 def _tabular(path: Path) -> pd.DataFrame:
+    """按文件后缀读取 CSV 或 Excel 表格。"""
     return pd.read_csv(path, encoding="utf-8-sig") if path.suffix.lower() == ".csv" else pd.read_excel(path, engine="openpyxl")
 
 
 def _prep(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str], dict[str, str]]:
+    """清洗表头并生成标准字段映射。"""
     df = _strip_junk(df)
     df.columns = [_fold(c) for c in df.columns]
     cols = list(df.columns)
@@ -180,6 +192,7 @@ def _prep(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str], dict[str, str]]:
 
 
 def _price_int(raw) -> int | None:
+    """从价格单元格中提取整数金额。"""
     if pd.isna(raw):
         return None
     s = re.search(r"(\d+(?:\.\d+)?)", str(raw).replace(",", "").replace("元", ""))
@@ -187,12 +200,14 @@ def _price_int(raw) -> int | None:
 
 
 def _cell(row, key: str | None) -> str:
+    """安全读取表格单元格并转成字符串。"""
     if not key or key not in row or pd.isna(row[key]):
         return ""
     return str(row[key]).strip()
 
 
 def _rows_to_listings(df: pd.DataFrame, cm: dict[str, str], src: str) -> tuple[list[TravelListing], dict]:
+    """把标准字段表格行转换成 TravelListing 列表和统计信息。"""
     dep, det, pr = cm["departure"], cm["detail"], cm["price"]
     tc, off, url, tit = cm.get("target_city"), cm.get("offer"), cm.get("url"), cm.get("raw_title")
     items: list[TravelListing] = []
@@ -236,6 +251,7 @@ def _rows_to_listings(df: pd.DataFrame, cm: dict[str, str], src: str) -> tuple[l
 
 
 def _generic_chunks(df: pd.DataFrame, name: str) -> list[str]:
+    """把非套餐表格按行转换为通用 RAG 文本片段。"""
     chunks: list[str] = []
     for idx, row in df.iterrows():
         line = "\n".join(f"{_fold(str(col))}: {row[col]}" for col in df.columns if not pd.isna(row[col]))
@@ -248,10 +264,12 @@ def _generic_chunks(df: pd.DataFrame, name: str) -> list[str]:
 
 
 def _ret(ts: list[str], cr: int, ct: int, neo: int, notes: list[str], **kw) -> dict:
+    """统一组织上传入库返回结构。"""
     return {"targets": ts, "chroma_rag_kb_docs": cr, "chroma_travel_deals_docs": ct, "neo4j_upserts": neo, "notes": notes, **kw}
 
 
 def ingest_file(path: Path) -> dict:
+    """根据文件类型把上传内容写入 RAG、套餐向量库或 Neo4j。"""
     ext, name = path.suffix.lower(), path.name
     targets: list[str] = []
     notes: list[str] = []
@@ -312,6 +330,7 @@ def ingest_file(path: Path) -> dict:
 
 
 def ingest_file_safe(path: Path) -> dict:
+    """安全执行文件入库，异常时返回结构化错误信息。"""
     try:
         return ingest_file(path)
     except Exception as exc:

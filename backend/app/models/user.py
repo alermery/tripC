@@ -4,6 +4,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.db import Base
 
 class User(Base):
+    """系统用户表，包含普通用户和管理员标记。"""
+
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)

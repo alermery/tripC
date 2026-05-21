@@ -34,16 +34,19 @@ _CORRUPT_MARKERS = (
 
 
 def chroma_persist_root() -> str:
+    """返回 Chroma 持久化目录。"""
     # 与 get_travel_details.Config / persist_chroma / chroma_rag_kb 使用同一目录。
     return str(Path(__file__).resolve().parents[2] / "chroma_db")
 
 
 def _is_corrupt_index_message(msg: str) -> bool:
+    """判断异常信息是否指向 Chroma 索引损坏。"""
     m = (msg or "").lower()
     return any(x in m for x in _CORRUPT_MARKERS)
 
 
 def _get_embeddings() -> OllamaEmbeddings:
+    """返回进程内复用的嵌入模型实例。"""
     global _EMBEDDINGS
     with _LOCK:
         if _EMBEDDINGS is None:
@@ -52,6 +55,7 @@ def _get_embeddings() -> OllamaEmbeddings:
 
 
 def _get_chroma_client() -> chromadb.ClientAPI:
+    """返回进程内复用的 Chroma 持久化客户端。"""
     global _CLIENT, _CLIENT_ROOT
     root = chroma_persist_root()
     with _LOCK:
@@ -71,6 +75,7 @@ def _get_chroma_client() -> chromadb.ClientAPI:
 
 
 def reset_chroma_client_for_tests() -> None:
+    """仅测试时使用：清空单例缓存。"""
     # 仅测试用：清空进程内单例。
     global _CLIENT, _CLIENT_ROOT, _EMBEDDINGS
     with _LOCK:
@@ -80,6 +85,7 @@ def reset_chroma_client_for_tests() -> None:
 
 
 def _delete_collection_quiet(name: str) -> None:
+    """尽量安静地删除集合，用于修复流程。"""
     try:
         _get_chroma_client().delete_collection(name)
         logger.warning("Chroma collection deleted (repair): %s", name)
@@ -88,12 +94,14 @@ def _delete_collection_quiet(name: str) -> None:
 
 
 def repair_chroma_collection(collection_name: str) -> None:
+    """删除损坏集合，等待后续自动重建。"""
     # 删除损坏集合，由下次 LangChain 访问时按 embedding 维度自动重建。
     with _LOCK:
         _delete_collection_quiet(collection_name)
 
 
 def get_langchain_chroma(collection_name: str) -> Chroma:
+    """构造共享客户端的 LangChain Chroma 句柄。"""
     # 同一 persist 根目录、共享 PersistentClient，避免每次 invoke 新建客户端。
     with _LOCK:
         return Chroma(
@@ -111,12 +119,14 @@ def chroma_similarity_search(
     k: int = 3,
     repair_on_corrupt: bool = True,
 ) -> list[Document]:
+    """执行带修复能力的相似度检索。"""
     # 带锁的相似度检索；若命中 HNSW/compactor 类错误则删除集合并重试一次（空结果直至重新入库）。
     q = (query or "").strip()
     if not q:
         return []
 
     def _run() -> list[Document]:
+        """在锁内执行一次检索。"""
         with _LOCK:
             vs = get_langchain_chroma(collection_name)
             retriever = vs.as_retriever(search_kwargs={"k": k})
@@ -142,6 +152,7 @@ def chroma_add_documents(
     documents: list[Document],
     ids: list[str],
 ) -> None:
+    """向 Chroma 集合写入文档。"""
     # 写入与检索共用锁，降低并发写读与 compactor 冲突概率。
     if not documents:
         return

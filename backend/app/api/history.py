@@ -21,6 +21,7 @@ def get_my_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[ChatHistoryItem]:
+    """返回当前用户最近 100 条聊天记录。"""
     # 限制最近 100 条，避免历史接口一次返回过大的回复正文。
     rows = (
         db.execute(

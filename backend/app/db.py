@@ -11,11 +11,12 @@ class Base(DeclarativeBase):
     """所有 ORM 模型的声明式基类。"""
     pass
 
-# pool_pre_ping 避免 PostgreSQL 侧断连导致首次查询失败。
+# 启用连接预检查，避免 PostgreSQL 侧断连导致首次查询失败。
 engine = create_engine(settings.PG_DSN, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
+    """FastAPI 依赖：提供请求级数据库会话并在结束时关闭。"""
     # 请求级会话必须在 finally 中关闭，避免连接泄漏。
     db = SessionLocal()
     try:

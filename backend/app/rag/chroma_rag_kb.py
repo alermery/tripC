@@ -1,13 +1,16 @@
 from __future__ import annotations
+
 import hashlib
 from datetime import datetime, timezone
+
 from langchain_core.documents import Document
+
 from backend.app.services.chroma_client import chroma_add_documents, chroma_similarity_search
 
 RAG_KB_COLLECTION = "rag_kb"
 
-# 将纯文本块写入独立集合 rag_kb，供 rag_kb_retriever 使用。
 def add_rag_text_chunks(chunks: list[str], *, source_file: str, extra_meta: dict | None = None,) -> int:
+    """把纯文本切片写入独立集合 `rag_kb`。"""
     if not chunks:
         return 0
     docs: list[Document] = []
@@ -35,6 +38,7 @@ def add_rag_text_chunks(chunks: list[str], *, source_file: str, extra_meta: dict
     return len(docs)
 
 def search_rag_kb(query: str, k: int = 5) -> list[Document]:
+    """在 `rag_kb` 集合中做相似度检索。"""
     try:
         return chroma_similarity_search(RAG_KB_COLLECTION, query, k=k, repair_on_corrupt=True)
     except Exception:

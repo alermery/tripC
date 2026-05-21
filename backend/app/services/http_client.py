@@ -19,6 +19,7 @@ _SESSION: requests.Session | None = None
 
 
 def _get_session() -> requests.Session:
+    """返回进程内复用的 HTTP session。"""
     global _SESSION
     with _SESSION_LOCK:
         if _SESSION is None:

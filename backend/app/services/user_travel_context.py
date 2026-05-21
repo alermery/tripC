@@ -23,6 +23,7 @@ _HISTORY_MESSAGES_VERSION = 0
 
 
 def invalidate_travel_context_caches() -> None:
+    """清空旅行上下文相关的缓存。"""
     global _RECENT_CONTEXT_VERSION, _HISTORY_MESSAGES_VERSION
     _RECENT_CONTEXT_VERSION += 1
     _HISTORY_MESSAGES_VERSION += 1
@@ -32,6 +33,7 @@ def invalidate_travel_context_caches() -> None:
 
 
 def resolve_user_id(username: str) -> int | None:
+    """把用户名解析成数据库用户 ID。"""
     name = (username or "").strip()
     if not name:
         return None
@@ -40,6 +42,7 @@ def resolve_user_id(username: str) -> int | None:
 
 @lru_cache(maxsize=1024)
 def _resolve_user_id_cached(username: str) -> int | None:
+    """缓存版用户名到用户 ID 的解析。"""
     db = SessionLocal()
     try:
         return db.query(User.id).filter(User.username == username).scalar()
@@ -54,6 +57,7 @@ def _cached_recent_travel_context_by_user_id(
     max_items: int,
     version: int,
 ) -> str:
+    """按用户 ID 读取近期旅行相关提问摘要。"""
     db = SessionLocal()
     try:
         rows = (
@@ -92,6 +96,7 @@ def _cached_recent_travel_context_by_user_id(
 
 @lru_cache(maxsize=256)
 def _cached_recent_travel_context(username: str, limit_rows: int, max_items: int) -> str:
+    """按用户名读取近期旅行相关提问摘要。"""
     uid = resolve_user_id(username)
     if uid is None:
         return ""
@@ -192,6 +197,7 @@ def _cached_planner_history_messages(
     max_assistant_chars: int,
     version: int,
 ) -> tuple[tuple[str, str], ...]:
+    """按会话读取最近若干轮规划对话原文。"""
     db = SessionLocal()
     try:
         rows = (

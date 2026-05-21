@@ -1,8 +1,4 @@
-/**
- * 主聊天页面交互逻辑。
- *
- * 负责 WebSocket 连接、流式回复渲染、历史会话恢复、定位、行程备注和工具进度提示。
- */
+// 主聊天页面交互逻辑：负责 WebSocket 连接、流式回复渲染、历史会话恢复、定位、行程备注和工具进度提示。
 
 let ws = null;
 let token = localStorage.getItem("xc_token") || "";
@@ -24,13 +20,11 @@ function redirectToLoginSessionExpired() {
 
 const LEGACY_ITINERARY_LS_KEY = "xc_itinerary_notes";
 
-/** 界面时间统一按北京时间（与后端 naive UTC 存库一致） */
+// 界面时间统一按北京时间（与后端 naive UTC 存库一致）。
 const BEIJING_TZ = "Asia/Shanghai";
 
-/**
- * 将服务端时间解析为 JS Date（UTC 时刻）。
- * Postgres / Pydantic 常见为无时区 ISO，按 UTC 解读，避免被当成本机时区（在伦敦/UTC 机器上会偏 8 小时）。
- */
+// 将服务端时间解析为 JS Date（UTC 时刻）。
+// 服务端常返回无时区 ISO，按 UTC 解读，避免被当成本机时区。
 function parseServerUtcToDate(raw) {
   if (raw === 0) return new Date(0);
   if (raw == null || raw === "") return new Date();
@@ -91,11 +85,11 @@ const streamNodes = new Map();
 const conversations = new Map();
 const STREAM_MD_FLUSH_MS = 80;
 
-/** 当前一轮从发送到 stream_end 的 UI 状态（与 WebSocket 流式对应） */
+// 当前一轮从发送到 stream_end 的 UI 状态（与 WebSocket 流式对应）。
 let activeStreamMessageId = null;
 let composerAwaitingReply = false;
 
-/** 与后端 AgentType 一致；仅用于界面展示为中文 */
+// 与后端 AgentType 一致，仅用于界面展示为中文。
 const AGENT_LABEL_ZH = {
   weather: "天气",
   map: "地图",
@@ -107,7 +101,7 @@ function formatAgentLabelZh(code) {
   return AGENT_LABEL_ZH[c] || c;
 }
 
-/** 后端 LangGraph 工具名 → 中文说明（与 backend 工具注册保持一致） */
+// 后端 LangGraph 工具名到中文说明的映射（与 backend 工具注册保持一致）。
 const TOOL_NAME_ZH = {
   qweather_forecast: "天气查询",
   geocode_address: "地址转坐标",
@@ -212,7 +206,7 @@ function applyStreamToolProgress(
   }
 }
 
-/** 流式 Markdown 重绘后，把等待条 / 工具状态条挂回气泡末尾 */
+// 流式 Markdown 重绘后，把等待条和工具状态条挂回气泡末尾。
 function attachStreamOverlayHints(bubble, info) {
   if (!bubble || !info) return;
   if (info.streamWaitHintEl) {
@@ -223,7 +217,7 @@ function attachStreamOverlayHints(bubble, info) {
   }
 }
 
-/** 流式首包前占位：不写入 rolling，避免落盘到会话记录 */
+// 流式首包前占位：不写入 rolling，避免落盘到会话记录。
 function buildStreamWaitHintEl(agent) {
   const el = document.createElement("p");
   el.className = "stream-wait-hint";
@@ -410,7 +404,7 @@ function createConversation(title = "新对话", presetMessages = []) {
   saveConversationState();
 }
 
-/** @param {"idle" | "awaiting"} mode */
+// 状态参数可取 idle 或 awaiting。
 function setComposerState(mode) {
   const busy = mode !== "idle";
   composerAwaitingReply = busy;
@@ -497,6 +491,7 @@ function renderConversation(conversationId) {
       bubble.className = "msg-bubble";
       renderBotBubbleContent(bubble, m.text);
       outer.appendChild(bubble);
+      appendBotMessageActions(outer, m.text);
       messagesEl.appendChild(outer);
     } else {
       const item = document.createElement("div");
@@ -614,13 +609,11 @@ function configureMarkdownOnce() {
       });
     }
   } catch {
-    /* ignore */
+    // 忽略 marked 配置失败，后续按默认解析行为渲染。
   }
 }
 
-/**
- * 机器人气泡存盘格式：首行「小C HH:MM」，余下以「[智能体标签] 」开头，其后为 Markdown 正文。
- */
+// 机器人气泡存盘格式：首行「小C HH:MM」，余下以「[智能体标签] 」开头，其后为 Markdown 正文。
 function splitBotBubblePlainText(full) {
   const s = String(full ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const m = s.match(/^([^\n]+\n\[[^\]]+\]\s*)([\s\S]*)$/);
@@ -692,6 +685,139 @@ function renderBotBubbleContent(bubble, fullPlainText) {
     mdWrap.textContent = body;
   }
   bubble.appendChild(mdWrap);
+}
+
+function getBotAgentLabelFromPlainText(fullPlainText) {
+  const { header } = splitBotBubblePlainText(fullPlainText);
+  const m = String(header || "").match(/\[([^\]]+)\]/);
+  return m ? m[1].trim() : "";
+}
+
+function isPlannerBotMessage(fullPlainText) {
+  return getBotAgentLabelFromPlainText(fullPlainText) === AGENT_LABEL_ZH.planner;
+}
+
+function buildPrintableReplyHtml(fullPlainText) {
+  const tmp = document.createElement("div");
+  tmp.className = "msg-bubble";
+  renderBotBubbleContent(tmp, fullPlainText);
+  return tmp.querySelector(".msg-md-content")?.innerHTML || escapeHtmlText(fullPlainText).replace(/\n/g, "<br>");
+}
+
+function exportPlannerReplyToPdf(fullPlainText) {
+  const { body } = splitBotBubblePlainText(fullPlainText);
+  const printableHtml = buildPrintableReplyHtml(fullPlainText);
+  const now = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: BEIJING_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date());
+  const title = "小C旅行规划";
+  const printWindow = window.open("", "_blank", "width=900,height=720");
+  if (!printWindow) {
+    alert("浏览器拦截了打印窗口，请允许弹出窗口后重试。");
+    return;
+  }
+  printWindow.document.write(`<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>${title}</title>
+  <style>
+    @page { size: A4; margin: 18mm 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #111827;
+      background: #ffffff;
+      font-family: "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+    .pdf-page { max-width: 760px; margin: 0 auto; }
+    .pdf-header {
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+      border-bottom: 2px solid #2563eb;
+    }
+    h1 { margin: 0 0 6px; font-size: 24px; line-height: 1.25; }
+    .pdf-meta { color: #64748b; font-size: 12px; }
+    h2 { margin: 20px 0 8px; font-size: 18px; }
+    h3 { margin: 16px 0 6px; font-size: 15px; }
+    p { margin: 8px 0; }
+    ul, ol { padding-left: 22px; }
+    li { margin: 4px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+    th, td { border: 1px solid #dbe3ef; padding: 7px 9px; text-align: left; vertical-align: top; }
+    th { background: #eff6ff; }
+    blockquote {
+      margin: 10px 0;
+      padding: 8px 12px;
+      border-left: 4px solid #2563eb;
+      background: #f8fafc;
+      color: #334155;
+    }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: #f1f5f9;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    a { color: #0369a1; word-break: break-all; }
+    .pdf-footer {
+      margin-top: 28px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      color: #94a3b8;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <main class="pdf-page">
+    <header class="pdf-header">
+      <h1>${title}</h1>
+      <div class="pdf-meta">生成时间：${escapeHtmlText(now)} · 来源：小C助手旅行规划智能体</div>
+    </header>
+    <article>${body.trim() ? printableHtml : "<p>暂无可导出的规划内容。</p>"}</article>
+    <footer class="pdf-footer">提示：在打印对话框中选择“另存为 PDF”即可保存。</footer>
+  </main>
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        window.focus();
+        window.print();
+      }, 80);
+    });
+  <\/script>
+</body>
+</html>`);
+  printWindow.document.close();
+}
+
+function appendBotMessageActions(outer, fullPlainText) {
+  if (!outer || !isPlannerBotMessage(fullPlainText)) return;
+  const actions = document.createElement("div");
+  actions.className = "msg-actions";
+  const btn = document.createElement("button");
+  btn.className = "msg-action-btn";
+  btn.type = "button";
+  btn.textContent = "导出 PDF";
+  btn.title = "将这条旅行规划回复保存为 PDF";
+  btn.addEventListener("click", () => exportPlannerReplyToPdf(fullPlainText));
+  actions.appendChild(btn);
+  outer.appendChild(actions);
 }
 
 function linkifyBubble(bubble) {
@@ -825,6 +951,28 @@ function appendStreamChunk(messageId, chunk) {
   }
 }
 
+function replaceStreamContent(messageId, content) {
+  const info = streamNodes.get(messageId);
+  if (!info) return;
+  if (info.streamWaitHintEl) {
+    info.streamWaitHintEl.remove();
+    info.streamWaitHintEl = null;
+  }
+  info.rolling = String(content ?? "");
+  if (markdownAvailable()) {
+    if (info.mdFlushTimer) {
+      clearTimeout(info.mdFlushTimer);
+      info.mdFlushTimer = null;
+    }
+    renderBotBubbleContent(info.bubble, info.rolling);
+    attachStreamOverlayHints(info.bubble, info);
+  } else {
+    info.bubble.textContent = info.rolling;
+    attachStreamOverlayHints(info.bubble, info);
+  }
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
 function endStreamMessage(messageId, cancelled = false) {
   const info = streamNodes.get(messageId);
   if (info) {
@@ -847,6 +995,7 @@ function endStreamMessage(messageId, cancelled = false) {
       info.rolling = plain;
     }
     renderBotBubbleContent(info.bubble, plain);
+    appendBotMessageActions(info.outer, plain);
     const conv = conversations.get(info.conversationId);
     if (conv) {
       conv.messages.push({ role: "bot", text: plain });
@@ -931,6 +1080,8 @@ function connect(auto = false) {
         );
       } else if (data.type === "stream_chunk") {
         appendStreamChunk(data.message_id, data.chunk || "");
+      } else if (data.type === "stream_replace") {
+        replaceStreamContent(data.message_id, data.content || "");
       } else if (data.type === "stream_end") {
         endStreamMessage(data.message_id, data.cancelled === true);
         setComposerState("idle");

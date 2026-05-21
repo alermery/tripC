@@ -1,4 +1,4 @@
-/** 与 FastAPI HTTPException detail 等结构兼容的展示文案 */
+// 生成兼容 FastAPI HTTPException detail 等结构的展示文案。
 function formatApiDetail(detail) {
   if (detail == null || detail === "") return "";
   if (typeof detail === "string") return detail;

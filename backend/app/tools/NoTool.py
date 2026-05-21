@@ -15,6 +15,7 @@ AMAP_API_KEY = settings.AMAP_API_KEY
 
 @lru_cache(maxsize=512)
 def _geocode_first(address: str) -> Optional[dict[str, Any]]:
+    """优先取出地址的第一条高德地理编码结果。"""
     address = (address or "").strip()
     if not address:
         return None
@@ -29,11 +30,13 @@ def _geocode_first(address: str) -> Optional[dict[str, Any]]:
 
 
 def geocode_lonlat(address: str) -> Optional[str]:
+    """把地址转成经纬度字符串。"""
     geo = _geocode_first(address)
     return str(geo["location"]) if geo else None
 
 
 def geocode_address(address: str) -> str:
+    """把地址转成可读的地址和经纬度说明。"""
     geo = _geocode_first(address)
     if not geo:
         return f"[错误] 未找到 '{address}'"
@@ -42,6 +45,7 @@ def geocode_address(address: str) -> str:
 
 
 def nearby_places(location: str, radius: int = 1000) -> str:
+    """查询坐标附近的通用 POI 列表。"""
     data = request_json(
         "GET",
         "https://restapi.amap.com/v3/place/around",
@@ -71,6 +75,7 @@ CSV_PATH = str(Path(__file__).resolve().parent.parent / "data" / "city_code.csv"
 
 
 def load_city_codes(csv_path: str = CSV_PATH) -> tuple[tuple[str, str], ...]:
+    """加载城市名与城市代码映射，缺失时回退到默认城市。"""
     global _city_codes_cache
     if _city_codes_cache is None:
         try:
@@ -96,11 +101,13 @@ def load_city_codes(csv_path: str = CSV_PATH) -> tuple[tuple[str, str], ...]:
 
 
 def find_city_code(city_name: str) -> str:
+    """根据城市名查找天气接口所需的城市代码。"""
     return _find_city_code_cached((city_name or "").strip())
 
 
 @lru_cache(maxsize=512)
 def _find_city_code_cached(city_name: str) -> str:
+    """缓存版城市代码查找，支持模糊匹配。"""
     city_codes = load_city_codes()
     for code, csv_city in city_codes:
         if csv_city == city_name:

@@ -1,4 +1,4 @@
-"""Map agent."""
+"""地图智能体。"""
 
 import threading
 
@@ -18,7 +18,10 @@ from backend.app.tools.get_map import (
 
 
 class MapAgent:
+    """封装地图类工具与地图提示词的 LangChain Agent。"""
+
     def __init__(self):
+        """初始化地图工具集、通义模型和 Agent 实例。"""
         self.tools = [
             geocode_address,
             route_plan,
@@ -36,6 +39,7 @@ class MapAgent:
     def map_assistant_stream(
         self, location: str, *, cancel_requested: threading.Event | None = None
     ):
+        """以流式方式回答地图查询，并透传工具调用进度。"""
         try:
             messages: list[BaseMessage] = [HumanMessage(content=location)]
             cumulative = ""
@@ -56,6 +60,7 @@ class MapAgent:
             yield f"地图查询时发生错误：{exc}，请联系管理员。", [], None
 
     def map_assistant(self, location: str) -> tuple[str, list[dict[str, str]]]:
+        """同步执行地图查询，返回最终文本。"""
         text = ""
         for content, _, _ in self.map_assistant_stream(location):
             text = content

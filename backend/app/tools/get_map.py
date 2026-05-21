@@ -1,4 +1,4 @@
-"""Map tools with bounded network calls."""
+"""地图工具：封装高德地理编码、路线规划、周边检索和定位。"""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ def _nearby_typed_places(
     type_keywords: tuple[str, ...],
     noun: str,
 ) -> str:
+    """按 POI 类型搜索指定坐标附近的酒店或餐饮。"""
     data = request_json(
         "GET",
         "https://restapi.amap.com/v3/place/around",
@@ -50,16 +51,19 @@ def _nearby_typed_places(
 
 @tool(description="地址转坐标（地理编码）。")
 def geocode_address(address: str) -> str:
+    """把地址转换成坐标说明。"""
     return NoTool.geocode_address(address)
 
 
 @tool(description="市内驾车路线规划：输入起点、终点地点名（或经纬度），返回距离、耗时摘要。")
 def route_plan(start: str, end: str, strategy: str = "0") -> str:
+    """规划两个地点之间的市内驾车路线。"""
     return driving_route_as_text(start, end, strategy)
 
 
 @tool(description="搜索附近指定半径内的住宿服务用于用户参考，仅推荐前三位。")
 def nearby_hotels(location: str, radius: int = 5000) -> str:
+    """搜索地点附近的住宿服务。"""
     coord = NoTool.geocode_lonlat(location)
     if not coord:
         return NoTool.geocode_address(location)
@@ -75,6 +79,7 @@ def nearby_hotels(location: str, radius: int = 5000) -> str:
 
 @tool(description="搜索附近指定半径内的餐饮服务用于用户参考，仅推荐前三位。")
 def nearby_restaurants(location: str, radius: int = 5000) -> str:
+    """搜索地点附近的餐饮服务。"""
     coord = NoTool.geocode_lonlat(location)
     if not coord:
         return NoTool.geocode_address(location)
@@ -94,6 +99,7 @@ def get_user_location(
     longitude: Optional[float] = None,
     ip_address: Optional[str] = None,
 ) -> str:
+    """根据浏览器坐标、IP 或默认值返回用户位置。"""
     if latitude and longitude:
         return reverse_geocode(latitude, longitude)
     if ip_address:
@@ -102,6 +108,7 @@ def get_user_location(
 
 
 def reverse_geocode(lat: float, lon: float) -> str:
+    """把经纬度逆解析为地址，并附带周边地点。"""
     data = request_json(
         "GET",
         "https://restapi.amap.com/v3/geocode/regeo",
@@ -128,6 +135,7 @@ def reverse_geocode(lat: float, lon: float) -> str:
 
 
 def ip_geolocation(ip: str) -> str:
+    """通过 IP 地址粗略定位城市和坐标。"""
     try:
         data = request_json(
             "GET",
@@ -145,4 +153,5 @@ def ip_geolocation(ip: str) -> str:
 
 
 def simulate_location() -> str:
+    """在没有真实定位时返回默认位置提示。"""
     return "**默认位置：北京市朝阳区**\n请授权浏览器定位获取精确位置"

@@ -1,4 +1,4 @@
-"""Weather agent."""
+"""天气智能体。"""
 
 import threading
 
@@ -13,7 +13,10 @@ from backend.app.tools.get_weather import qweather_forecast
 
 
 class WeatherAgent:
+    """封装天气预报、季节提示和安全提示工具的 Agent。"""
+
     def __init__(self):
+        """初始化天气工具集、通义模型和 Agent 实例。"""
         self.tools = [qweather_forecast, travel_safe_tips, travel_season_tips]
         self.llm = get_chat_tongyi()
         self.agent = create_agent(
@@ -25,6 +28,7 @@ class WeatherAgent:
     def weather_assistant_stream(
         self, location: str, *, cancel_requested: threading.Event | None = None
     ):
+        """以流式方式回答天气问题，并透传工具调用进度。"""
         try:
             messages: list[BaseMessage] = [HumanMessage(content=location)]
             cumulative = ""
@@ -45,6 +49,7 @@ class WeatherAgent:
             yield f"天气查询时发生错误：{exc}，请联系管理员。", [], None
 
     def weather_assistant(self, location: str) -> tuple[str, list[dict[str, str]]]:
+        """同步执行天气查询，返回最终文本。"""
         text = ""
         for content, _, _ in self.weather_assistant_stream(location):
             text = content

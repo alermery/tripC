@@ -16,6 +16,7 @@ _COORD_RE = re.compile(r"^\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*$")
 _GEOCODE_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="amap-geocode")
 
 def _require_key() -> str:
+    """获取高德 API key，缺失时直接报错。"""
     key = settings.AMAP_API_KEY
     if not key:
         raise ValueError("未配置 AMAP_API_KEY")
@@ -24,6 +25,7 @@ def _require_key() -> str:
 # 将地址或「经度,纬度」解析为 (lng, lat, 展示名)。
 @lru_cache(maxsize=512)
 def resolve_location(text: str) -> tuple[float, float, str]:
+    """把地址或经纬度文本解析为标准坐标和展示名。"""
     raw = (text or "").strip()
     if not raw:
         raise ValueError("地点不能为空")
@@ -50,6 +52,7 @@ def resolve_location(text: str) -> tuple[float, float, str]:
     return lng, lat, name
 
 def _points_from_polyline_string(pl: str) -> list[list[float]]:
+    """把高德 polyline 字符串拆成经纬度点序列。"""
     pts: list[list[float]] = []
     for seg in (pl or "").split(";"):
         seg = seg.strip()
@@ -63,13 +66,14 @@ def _points_from_polyline_string(pl: str) -> list[list[float]]:
     return pts
 
 def _parse_route_polylines(route: dict[str, Any]) -> list[list[float]]:
+    """从高德路线结果中提取可绘制的折线点。"""
     points: list[list[float]] = []
     for step in route.get("steps") or []:
         pl = step.get("polyline") or ""
         points.extend(_points_from_polyline_string(pl))
     if points:
         return points
-    # 部分返回在 path 层级带整段 polyline
+    # 部分返回会在 path 层级携带整段 polyline。
     top = route.get("polyline")
     if isinstance(top, str) and top.strip():
         return _points_from_polyline_string(top)
@@ -77,6 +81,7 @@ def _parse_route_polylines(route: dict[str, Any]) -> list[list[float]]:
 
 # 调用高德驾车路径规划，返回前端可用的折线与概要。
 def compute_driving_route(origin: str, destination: str, strategy: str = "0",) -> dict[str, Any]:
+    """计算两地之间的驾车路线并返回前端所需结构。"""
     if origin == destination:
         olng, olat, oname = resolve_location(origin)
         dlng, dlat, dname = olng, olat, oname
@@ -127,6 +132,7 @@ def compute_driving_route(origin: str, destination: str, strategy: str = "0",) -
 
 # 供 LangChain 工具返回可读文本。
 def driving_route_as_text(start: str, end: str, strategy: str = "0") -> str:
+    """把驾车路线结果格式化为工具可读文本。"""
     try:
         r = compute_driving_route(start, end, strategy)
         km = r["distance_m"] / 1000

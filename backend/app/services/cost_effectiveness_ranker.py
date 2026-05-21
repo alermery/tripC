@@ -8,6 +8,7 @@ from backend.app.services.preference_extractor import extract_preferences
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
+    """把任意值尽量转换为浮点数。"""
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -15,6 +16,7 @@ def _to_float(value: Any, default: float = 0.0) -> float:
 
 
 def _query_flags(query: str) -> dict[str, bool]:
+    """从用户问题中提取性价比相关的关键词标记。"""
     raw = str(query or "")
     return {
         "family": any(k in raw for k in ("亲子", "孩子", "父母", "老人")),
@@ -27,6 +29,7 @@ def _query_flags(query: str) -> dict[str, bool]:
 
 
 def _budget_price_score(total_price_yuan: float, budget_amount_yuan: float) -> float:
+    """按预算上限计算价格得分。"""
     ratio = total_price_yuan / max(budget_amount_yuan, 1.0)
     if ratio <= 1:
         return 0.7 + 0.3 * (1 - ratio)
@@ -35,6 +38,7 @@ def _budget_price_score(total_price_yuan: float, budget_amount_yuan: float) -> f
 
 
 def _relative_price_score(total_price_yuan: float, peer_prices: Sequence[float]) -> float:
+    """在同批候选中按相对价格计算得分。"""
     prices = [float(p) for p in peer_prices if p is not None]
     if not prices:
         return 0.5
@@ -46,6 +50,7 @@ def _relative_price_score(total_price_yuan: float, peer_prices: Sequence[float])
 
 
 def _experience_weights(query: str) -> tuple[float, float, float]:
+    """根据用户意图调整便利、特色和舒适三个体验权重。"""
     flags = _query_flags(query)
     convenience = 0.34
     feature = 0.33
@@ -74,6 +79,7 @@ def score_cost_effective_option(
     *,
     peer_prices: Sequence[float] | None = None,
 ) -> dict[str, Any]:
+    """给单个旅行选项计算性价比分数与分项权重。"""
     pref = extract_preferences(query)
     flags = _query_flags(query)
     budget = pref.get("budget_amount_yuan")
@@ -117,6 +123,7 @@ def rank_cost_effective_options(
     query: str,
     options: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
+    """对多个候选旅行选项按性价比排序。"""
     peer_prices = [_to_float(option.get("total_price_yuan")) for option in options]
     ranked: list[dict[str, Any]] = []
     for option in options:
@@ -131,5 +138,6 @@ def choose_best_cost_effective_option(
     query: str,
     options: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any] | None:
+    """返回性价比最高的单个旅行选项。"""
     ranked = rank_cost_effective_options(query, options)
     return ranked[0] if ranked else None

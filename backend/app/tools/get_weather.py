@@ -12,6 +12,7 @@ QWEATHER_HOST = settings.QWEATHER_HOST
     ),
 )
 def qweather_forecast(city: str = "北京", days: int = 7) -> str:
+    """调用和风天气接口，返回指定城市最多 7 天预报。"""
     if not QWEATHER_API_KEY:
         return "[错误] 配置错误：请设置 QWEATHER_API_KEY"
 
@@ -30,20 +31,20 @@ def qweather_forecast(city: str = "北京", days: int = 7) -> str:
 
             for day in daily:
                 date = day['fxDate']
-                # 白天天气和温度
+                # 白天天气和温度。
                 text_day = day['textDay']
                 temp_max = day['tempMax']
                 temp_min = day['tempMin']
-                # 夜间天气
+                # 夜间天气。
                 text_night = day['textNight']
-                # 湿度、紫外线、降水概率
+                # 湿度、紫外线、降水概率。
                 humidity = day.get('humidity', '—')
                 uv_index = day.get('uvIndex', '—')
-                precip = day.get('precip', '0')  # 降水量 mm
-                # 风向风力（白天）
+                precip = day.get('precip', '0')  # 降水量，单位为 mm。
+                # 风向风力（白天）。
                 wind_dir = day.get('windDirDay', '—')
                 wind_scale = day.get('windScaleDay', '—')
-                # 日出日落
+                # 日出日落。
                 sunrise = day.get('sunrise', '—')
                 sunset = day.get('sunset', '—')
 

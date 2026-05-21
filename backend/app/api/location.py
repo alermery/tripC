@@ -14,6 +14,7 @@ router = APIRouter(prefix="/location", tags=["location"])
 
 @lru_cache(maxsize=512)
 def _reverse_by_rounded_coord(lat_round: float, lon_round: float) -> dict[str, str]:
+    """按规整后的坐标调用高德逆地理编码，并返回地址与城市。"""
     # 坐标规整到 4 位小数后缓存，兼顾精度与调用成本。
     params = {
         "key": settings.AMAP_API_KEY,

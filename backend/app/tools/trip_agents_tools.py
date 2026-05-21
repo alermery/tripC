@@ -12,6 +12,7 @@ from langchain_core.tools import tool
     )
 )
 def trip_budget_skeleton(total_budget_yuan: int, trip_days: int, style: str = "balanced") -> str:
+    """按预算、天数和风格偏好生成旅行预算骨架。"""
     if total_budget_yuan <= 0 or trip_days <= 0:
         return "总预算与天数须为正整数。"
     st = (style or "balanced").strip().lower()
@@ -29,7 +30,7 @@ def trip_budget_skeleton(total_budget_yuan: int, trip_days: int, style: str = "b
     }
     trans, stay, food, ticket, buffer_ = profiles[st]
     per_day = total_budget_yuan / trip_days
-    if per_day < 100:
+    if per_day < 180:
         return (
             f"预算数值疑似异常：共 ¥{total_budget_yuan} / {trip_days} 天，日均约 ¥{per_day:.0f}，"
             "明显低于常规旅行开销。请核对是否漏写 0 或截断了用户原始金额。"
@@ -37,6 +38,7 @@ def trip_budget_skeleton(total_budget_yuan: int, trip_days: int, style: str = "b
         )
 
     def line(name: str, ratio: float) -> str:
+        """格式化单个预算项的占比说明。"""
         amt = int(total_budget_yuan * ratio)
         return f"- {name}：约 {ratio * 100:.0f}%（约 ¥{amt}）"
 

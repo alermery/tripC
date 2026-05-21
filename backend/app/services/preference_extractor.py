@@ -20,6 +20,7 @@ _BUDGET_WITH_UNIT_RE = re.compile(
 
 
 def _amount_to_yuan(amount: str, unit: str | None) -> int | None:
+    """把金额文本统一换算为元。"""
     try:
         value = float(amount)
     except (TypeError, ValueError):
@@ -32,6 +33,7 @@ def _amount_to_yuan(amount: str, unit: str | None) -> int | None:
 
 
 def _apply_budget_match(out: dict[str, Any], match: re.Match[str], *, scope: str) -> None:
+    """把预算匹配结果写回结构化偏好字典。"""
     out["budget_phrase"] = match.group(0)
     amount = _amount_to_yuan(match.group("amount"), match.groupdict().get("unit"))
     if amount is not None:
@@ -40,6 +42,7 @@ def _apply_budget_match(out: dict[str, Any], match: re.Match[str], *, scope: str
 
 
 def extract_preferences(text: str) -> dict[str, Any]:
+    """从用户自然语言中提取预算、天数、偏好和主题标签。"""
     if not text or not str(text).strip():
         return {}
     raw = str(text).strip()
@@ -107,6 +110,7 @@ def extract_preferences(text: str) -> dict[str, Any]:
 
 
 def format_preferences_for_prompt(pref: dict[str, Any]) -> str:
+    """把偏好字典格式化为可直接注入提示词的中文块。"""
     if not pref:
         return ""
     lines = [

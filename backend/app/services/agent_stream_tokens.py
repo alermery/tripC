@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessageChunk, ToolMessage
 
 
 def aimessage_chunk_text(content: Any) -> str:
+    """把 AIMessageChunk 的 content 归一化为纯文本。"""
     if content is None:
         return ""
     if isinstance(content, str):
@@ -30,6 +31,7 @@ def aimessage_chunk_text(content: Any) -> str:
 
 
 def _tool_events_from_aimessage_chunk(tok: AIMessageChunk) -> list[dict[str, str]]:
+    """从模型流式块中提取工具调用事件。"""
     events: list[dict[str, str]] = []
     tcc = getattr(tok, "tool_call_chunks", None) or []
     for tc in tcc:
@@ -125,6 +127,7 @@ def iter_agent_text_token_deltas(
     *,
     cancel_requested: threading.Event | None = None,
 ) -> Iterator[str]:
+    """只产出文本增量，忽略工具事件。"""
     for text_piece, tool_hint in iter_agent_text_and_tool_hints(
         agent, messages, cancel_requested=cancel_requested
     ):
@@ -141,6 +144,7 @@ def iter_agent_text_batched_deltas(
     cancel_requested: threading.Event | None = None,
     min_chunk_chars: int = 36,
 ) -> Iterator[tuple[str, dict[str, str] | None]]:
+    """把细碎 token 合并成更适合前端刷新的批次。"""
     # 伪流式：在 token 流之上合并若干小段；遇到工具提示时先刷出缓冲区再单独产出 ("", tool_name)。
     buf: list[str] = []
     pending = 0

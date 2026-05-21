@@ -18,6 +18,7 @@ _RAG_KB_RETRIEVER_DESCRIPTION = (
 
 
 def _uploaded_at_sort_key(doc) -> tuple[int, datetime]:
+    """把文档按上传时间转换成可排序的键。"""
     meta = getattr(doc, "metadata", {}) or {}
     raw = str(meta.get("uploaded_at") or "").strip()
     if not raw:
@@ -30,6 +31,7 @@ def _uploaded_at_sort_key(doc) -> tuple[int, datetime]:
 
 @tool(description=_RAG_KB_RETRIEVER_DESCRIPTION)
 def rag_kb_retriever(query: str, top_k: int = _DEFAULT_TOP_K) -> str:
+    """检索管理员上传的 RAG 知识库并按时间优先返回片段。"""
     k = max(1, min(int(top_k), _MAX_TOP_K))
     docs = search_rag_kb(query, k=max(k * 3, k))
     docs = sorted(docs, key=_uploaded_at_sort_key, reverse=True)[:k]

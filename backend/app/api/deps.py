@@ -11,7 +11,7 @@ from backend.app.db import get_db
 from backend.app.models.user import User
 from backend.app.security import decode_access_token, decode_token_payload
 
-# OAuth2PasswordBearer 配合 OpenAPI「Authorize」按钮；前端也可直接传 Authorization: Bearer。
+# 供接口文档授权按钮使用；前端也可直接传入 Bearer 令牌。
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 # 管理接口强制要求 Authorization 头，缺失时自动返回 403/401。
 admin_bearer = HTTPBearer(auto_error=True)

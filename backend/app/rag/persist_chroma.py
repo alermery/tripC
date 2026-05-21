@@ -5,8 +5,8 @@ from backend.app.rag.models import TravelListing
 from backend.app.services.chroma_client import chroma_add_documents
 from backend.app.tools.get_travel_details import Config
 
-# 写入与 vector_store_retriever 相同的 Chroma 集合。
 def write_listings_to_chroma(items: list[TravelListing]) -> int:
+    """把旅游套餐写入与 vector_store_retriever 共用的 Chroma 集合。"""
     if not items:
         return 0
 

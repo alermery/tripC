@@ -21,9 +21,10 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatGenerationChunk
 from langchain_ollama.chat_models import ChatOllama
 
-DEFAULT_QWEN_MODEL = "qwen3-vl-235b-a22b-thinking"
+DEFAULT_QWEN_MODEL = "qwen3-vl-flash-2025-10-15"
 
 def _tongyi_resp_has_nonempty_choices(resp: Any) -> bool:
+    """判断 DashScope 响应是否包含可消费的 choices 列表。"""
     if not isinstance(resp, dict):
         return False
     out = resp.get("output")
@@ -36,11 +37,13 @@ class SafeStreamChatTongyi(ChatTongyi):
     """跳过 DashScope 流式响应中的空 choices 帧。"""
 
     def stream_completion_with_retry(self, **kwargs: Any) -> Any:
+        """包装原始流式调用，在重试逻辑前过滤空帧。"""
         # 绑定 tools 时偶发空帧，必须在 subtract_client_response 前过滤。
         retry_decorator = _create_retry_decorator(self)
 
         @retry_decorator
         def _stream_completion_with_retry(**_kwargs: Any) -> Any:
+            """执行一次带重试的原始流式请求。"""
             responses = self.client.call(**_kwargs)
             prev_resp: Any = None
 
@@ -84,6 +87,7 @@ class SafeStreamChatTongyi(ChatTongyi):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
+        """同步流式输出 LangChain ChatGenerationChunk。"""
         params: Dict[str, Any] = self._invocation_params(
             messages=messages, stop=stop, stream=True, **kwargs
         )
@@ -127,6 +131,7 @@ class SafeStreamChatTongyi(ChatTongyi):
         run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:
+        """异步流式输出 LangChain ChatGenerationChunk。"""
         params: Dict[str, Any] = self._invocation_params(
             messages=messages, stop=stop, stream=True, **kwargs
         )
@@ -164,13 +169,16 @@ class SafeStreamChatTongyi(ChatTongyi):
             yield chunk
 
 def get_chat_tongyi(model: str = DEFAULT_QWEN_MODEL, *, streaming: bool = True) -> ChatTongyi:
+    """创建带空帧容错的通义聊天模型客户端。"""
     return SafeStreamChatTongyi(
         model=model,
         streaming=streaming,
         model_kwargs={"enable_thinking": False},
     )
 
+# 若采用本地模型，可在此处配置（当前为 Ollama qwen3.5:9b 占位演示）。
 DEFAULT_OLLAMA_MODEL = "qwen3.5:9b"
 
 def get_chat_ollama(model: str = DEFAULT_OLLAMA_MODEL) -> ChatOllama:
+    """创建本地 Ollama 聊天模型客户端。"""
     return ChatOllama(model=model, streaming=True)

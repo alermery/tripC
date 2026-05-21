@@ -1,8 +1,4 @@
-/**
- * 主题管理。
- *
- * 使用 `localStorage.xc_theme` 持久化日间/夜间模式；页面加载时尽早写入 body data-theme。
- */
+// 主题管理：使用 localStorage.xc_theme 持久化日间/夜间模式，并在页面加载时尽早写入 body data-theme。
 
 const XC_THEME_KEY = "xc_theme";
 const XC_THEME_DARK = "dark";

@@ -1,4 +1,4 @@
-"""Build the planner prompt with preference, memory and notes blocks."""
+"""拼装旅行规划提示词中的偏好、历史记忆和手动备注块。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ PREFERENCE_BLOCK_MARKER = "【从本轮用户表述中提取的结构化偏好"
 
 
 def ensure_preference_block(core_query: str, preference_source: str | None = None) -> str:
-    """Ensure direct PlannerAgent calls still receive structured preference guards."""
+    """确保直接调用 PlannerAgent 时也带有结构化偏好约束。"""
     if PREFERENCE_BLOCK_MARKER in (core_query or ""):
         return core_query
     pref_src = preference_source if preference_source is not None else core_query
@@ -36,6 +36,7 @@ def build_enriched_planner_query(
     conversation_id: str | None = None,
     skip_cross_conversation_memory: bool = False,
 ) -> str:
+    """把偏好、历史和手动备注拼成规划智能体的最终输入。"""
     parts: list[str] = []
     pref_src = preference_source if preference_source is not None else core_query
     preference_guarded_query = ensure_preference_block(core_query, pref_src)

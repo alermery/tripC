@@ -1,9 +1,10 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
-# 与 Neo4j TravelDetail / Price / Departure 及 Chroma 文档对齐的结构。
 @dataclass
 class TravelListing:
+    """与 Neo4j 和 Chroma 对齐的旅游套餐结构。"""
+
     source_id: str
     source_site: str
     detail: str
@@ -16,6 +17,7 @@ class TravelListing:
     departure_code: int | None = None
 
     def chroma_page_content(self) -> str:
+        """生成写入 Chroma 的展示文本。"""
         parts = [
             self.raw_title or self.detail[:120],
             f"出发地:{self.departure}",

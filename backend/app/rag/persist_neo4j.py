@@ -9,8 +9,8 @@ driver = GraphDatabase.driver(
     auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
 )
 
-# 与 get_travel_details 中 Cypher 查询兼容：TravelDetail.detail / Departure / Price / Offer。
 def upsert_listing(tx, item: TravelListing) -> None:
+    """把单条旅游套餐写入 Neo4j，并保持查询结构兼容。"""
     tx.run(
         """
         MERGE (td:TravelDetail {source_id: $source_id})
@@ -53,6 +53,7 @@ def upsert_listing(tx, item: TravelListing) -> None:
         )
 
 def write_listings_to_neo4j(items: list[TravelListing]) -> int:
+    """批量写入旅游套餐到 Neo4j。"""
     if not items:
         return 0
     with driver.session() as session:

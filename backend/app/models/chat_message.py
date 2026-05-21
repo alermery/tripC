@@ -4,6 +4,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.db import Base
 
 class ChatMessage(Base):
+    """聊天消息表，记录一轮问答及其所属会话。"""
+
     __tablename__ = "chat_messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)

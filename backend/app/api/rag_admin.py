@@ -1,4 +1,4 @@
-"""RAG。"""
+"""RAG 管理接口。"""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ _lock = threading.Lock()
 
 
 def _run_ingest(task_id: str, tmp_path: Path, filename: str, uploaded_by: str) -> None:
+    """后台执行上传文件入库，并更新任务状态。"""
     try:
         result = ingest_file_safe(tmp_path)
         result["filename"] = filename
@@ -44,6 +45,7 @@ def _run_ingest(task_id: str, tmp_path: Path, filename: str, uploaded_by: str) -
 
 
 def _queue_upload(file: UploadFile, uploaded_by: str) -> dict:
+    """校验上传文件，落临时文件，并启动后台入库任务。"""
     filename = file.filename or ""
     if not filename:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少文件名")
@@ -82,6 +84,7 @@ def upload_rag_document(
     file: UploadFile = File(...),
     admin: User = Depends(get_current_admin_user),
 ):
+    """上传单个 RAG 文件并返回异步任务编号。"""
     return _queue_upload(file, admin.username)
 
 
@@ -90,6 +93,7 @@ def upload_rag_documents(
     files: Annotated[list[UploadFile], File(...)],
     admin: User = Depends(get_current_admin_user),
 ):
+    """批量上传 RAG 文件，逐个返回排队或失败结果。"""
     if not files:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请至少选择一个文件")
 
@@ -114,6 +118,7 @@ def get_rag_upload_task(
     task_id: str,
     admin: User = Depends(get_current_admin_user),
 ):
+    """查询 RAG 上传任务的当前状态和入库结果。"""
     with _lock:
         task = _tasks.get(task_id)
     if not task:

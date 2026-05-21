@@ -18,6 +18,7 @@ driver = GraphDatabase.driver(
 
 
 def _normalize_departure_token(departure: str) -> str:
+    """清洗出发地文本，去掉常见语义噪声。"""
     raw = (departure or "").strip()
     if not raw:
         return raw
@@ -40,6 +41,7 @@ def _normalize_departure_token(departure: str) -> str:
 
 
 def _strip_city_noise(name: str) -> str:
+    """移除城市名称末尾的常见行政区后缀。"""
     n = (name or "").strip()
     for suf in (
         "市辖区",
@@ -59,10 +61,12 @@ def _strip_city_noise(name: str) -> str:
 
 
 def _departure_graph_stem_cypher() -> str:
+    """生成用于图数据库出发地模糊匹配的 Cypher 片段。"""
     return "replace(replace(coalesce(dp.location, ''), '出发', ''), ' ', '')"
 
 
 def _departure_match_any_clause() -> str:
+    """生成出发地多词匹配的 Cypher 条件。"""
     stem = _departure_graph_stem_cypher()
     return (
         "ANY(d IN $dep_terms WHERE size(d) >= 2 AND ("
@@ -73,6 +77,7 @@ def _departure_match_any_clause() -> str:
 
 
 def _departure_search_terms(departure: str) -> list[str]:
+    """把用户输入的出发地拆成可用于图查询的候选词。"""
     raw0 = (departure or "").strip()
     if not raw0:
         return []
@@ -94,6 +99,7 @@ def _departure_search_terms(departure: str) -> list[str]:
 
 
 def _strip_travel_planning_noise_from_dest(text: str) -> str:
+    """移除目的地关键词里的天数、团型等规划噪声。"""
     t = str(text or "").strip()
     if not t:
         return t
@@ -116,6 +122,7 @@ def _strip_travel_planning_noise_from_dest(text: str) -> str:
 
 
 def _is_destination_noise_token(p: str) -> bool:
+    """判断某个词是否只是旅行规划噪声。"""
     x = (p or "").strip()
     if len(x) < 2:
         return True
@@ -127,6 +134,7 @@ def _is_destination_noise_token(p: str) -> bool:
 
 
 def _keyword_search_terms(keywords: str | None) -> list[str]:
+    """把目的地关键词整理成适合 Neo4j 查询的词表。"""
     if not keywords or not str(keywords).strip():
         return []
     raw0 = str(keywords).strip()
@@ -179,6 +187,7 @@ def _keyword_search_terms(keywords: str | None) -> list[str]:
 
 
 def _rows_to_dicts(rows: list[Any]) -> list[dict[str, Any]]:
+    """把 Neo4j 查询结果统一转成字典列表。"""
     out: list[dict[str, Any]] = []
     for r in rows:
         out.append(dict(r))
@@ -190,10 +199,12 @@ def query_search_travel_deals(
     max_price: Optional[int] = None,
     keywords: Optional[str] = None,
 ) -> list[dict[str, Any]]:
+    """按出发地、价格和可选关键词检索旅游套餐。"""
     dep_terms = _departure_search_terms(departure)
     kw_terms = _keyword_search_terms(keywords) if keywords else []
 
     def cypher_query(tx):
+        """执行旅游套餐关键词检索的 Cypher 查询。"""
         q = f"""
         MATCH (td:TravelDetail)-[:HAS_DEPARTURE]->(dp:Departure)
         WHERE {_departure_match_any_clause()}
@@ -233,10 +244,12 @@ def query_find_best_offers(
     destination_keywords: str,
     max_price: int = 200_000,
 ) -> list[dict[str, Any]]:
+    """按性价比优先检索出发地与目的地组合。"""
     dep_terms = _departure_search_terms(departure)
     kw_terms = _keyword_search_terms(destination_keywords)
 
     def cypher_query(tx):
+        """执行性价比优先套餐检索的 Cypher 查询。"""
         q = f"""
         MATCH (td:TravelDetail)-[:HAS_DEPARTURE]->(dp:Departure)
         WHERE {_departure_match_any_clause()}
@@ -271,9 +284,11 @@ def query_travel_by_price_range(
     min_price: int,
     max_price: int,
 ) -> list[dict[str, Any]]:
+    """按出发地与价格区间检索套餐。"""
     dep_terms = _departure_search_terms(departure)
 
     def cypher_query(tx):
+        """执行价格区间套餐检索的 Cypher 查询。"""
         q = f"""
         MATCH (td:TravelDetail)-[:HAS_DEPARTURE]->(dp:Departure)
         MATCH (td)-[:HAS_PRICE]->(pr:Price)

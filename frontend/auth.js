@@ -1,8 +1,4 @@
-/**
- * 登录与注册页面逻辑。
- *
- * 负责普通用户注册、普通登录、API 地址持久化和 JWT 写入 localStorage。
- */
+// 登录与注册页面逻辑：负责普通用户注册、登录、API 地址持久化和 JWT 写入 localStorage。
 
 const apiBaseInput = document.getElementById("apiBase");
 const usernameInput = document.getElementById("username");

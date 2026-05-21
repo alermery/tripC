@@ -1,4 +1,4 @@
-﻿# --- Web ---
+﻿# Web 服务
 fastapi==0.115.0
 uvicorn[standard]==0.30.0
 python-multipart==0.0.9
@@ -6,7 +6,7 @@ starlette==0.38.6
 pydantic==2.10.3
 pydantic-settings==2.13.1
 
-# --- LangChain ---
+# LangChain 相关
 langchain==1.2.15
 langchain-core==1.2.30
 langchain-community==0.4.1
@@ -15,14 +15,14 @@ langchain-ollama==1.1.0
 langgraph==1.1.6
 chromadb==1.5.7
 
-# --- Data / DB ---
+# 数据处理与数据库
 pandas==2.2.2
 openpyxl==3.1.5
 neo4j==5.25.0
 sqlalchemy==2.0.35
 psycopg2-binary==2.9.9
 
-# --- Auth / HTTP ---
+# 鉴权与 HTTP
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 requests==2.33.1
